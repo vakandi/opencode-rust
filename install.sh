@@ -33,6 +33,7 @@ die() { printf '[install] ERROR: %s\n' "$*" >&2; exit 1; }
 
 BIN_SRC="$SERVER_DIR/target/release/opencode"
 BIN_DST="$HOME/.local/bin/opr"
+GILFOYLE_DST="$HOME/.local/bin/gilfoyle"
 STAMP="$SERVER_DIR/target/.opr-build-stamp"
 
 FORCE=0
@@ -94,16 +95,37 @@ fi
 cat > "$BIN_DST" <<EOF
 #!/usr/bin/env bash
 # opr — opencode from ${ROOT}
+# A known subcommand is forwarded verbatim, flags and all. Shifting it off (the earlier version
+# did \`run) shift\`) handed opencode the subcommand's arguments as if they were global, so
+# \`opr run --model x "p"\` became \`opencode --model x "p"\` and failed.
 case "\${1:-}" in
-  serve) shift ;;
-  run)   shift ;;
-  -v|--version|-h|--help) ;;
-  *)     set -- tui "\${@}" ;;
+  serve|run|tui|web|acp|session|stats|db|config|auth|agent|debug|mcp|export|import|upgrade|uninstall|github|models|generate|version|attach)
+    exec "$SERVER_DIR/target/release/opencode" "\$@"
+    ;;
+  -v|--version)
+    exec "$SERVER_DIR/target/release/opencode" --version
+    ;;
+  *)
+    exec "$SERVER_DIR/target/release/opencode" tui "\$@"
+    ;;
 esac
-exec "$SERVER_DIR/target/release/opencode" "\${@:-tui}"
 EOF
 chmod +x "$BIN_DST"
 log "installed $BIN_DST (opr: tui / serve / run)"
+
+# `gilfoyle "prompt"` is shorthand for `opr run "prompt"`. On a case-insensitive filesystem
+# (macOS default) `Gilfoyle` resolves to this same file, so both spellings work.
+cat > "$GILFOYLE_DST" <<EOF
+#!/usr/bin/env bash
+# gilfoyle — run one prompt to completion via opr run.
+if [ \$# -eq 0 ]; then
+  echo "usage: gilfoyle \"<prompt>\"" >&2
+  exit 2
+fi
+exec "$BIN_DST" run "\$@"
+EOF
+chmod +x "$GILFOYLE_DST"
+log "installed $GILFOYLE_DST (gilfoyle: run one prompt)"
 
 if [ ! -L "$ROOT/config-xdg/opencode" ]; then
   mkdir -p "$ROOT/config-xdg"
