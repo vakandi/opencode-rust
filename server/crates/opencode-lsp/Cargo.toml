@@ -1,0 +1,17 @@
+[package]
+name = "opencode-lsp"
+version = "0.1.0"
+edition = "2021"
+description = "LSP client for opencode"
+
+[dependencies]
+tokio = { workspace = true, features = ["full", "process", "io-util"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+tokio-stream = { workspace = true }
+url = "2.5"
+lsp-types = "0.97"

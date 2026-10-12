@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { 
+    font-family: 'Orbitron', monospace; 
+    background: #000; 
+    color: #00e5ff; 
+    padding: 20px; 
+    margin: 0;
+  }
+  
+  .model-badge {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 8px 12px;
+    border: 2px solid #00e5ff;
+    border-radius: 4px;
+    cursor: pointer;
+    margin: 5px;
+    transition: all 0.2s;
+  }
+  
+  .model-badge:hover {
+    background: #00e5ff;
+    transform: scale(1.1);
+  }
+  
+  .model-badge.selected {
+    background: #ff6b6b;
+    border-color: #ff6b6b;
+    color: white;
+    transform: scale(1.05);
+  }
+  
+  .model-badge.selected.green {
+    background: #4caf50;
+    border-color: #4caf50;
+  }
+  
+  .model-badge.selected.yellow {
+    background: #ffc107;
+    border-color: #ffc107;
+  }
+  
+  #debug {
+    margin-top: 20px;
+    padding: 10px;
+    background: rgba(0,229,255,0.1);
+    border: 1px solid #00e5ff;
+    border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+  <h2>🎯 Test Badges - Debug Interface</h2>
+  
+  <div id="debug">Debug: Waiting...</div>
+  
+  <div style="display: flex; gap: 10px; margin: 20px 0;">
+    <span class="model-badge" id="badge-bigpickle" onclick="selectBadge('big-pickle')">🔴 BigPickle</span>
+    <span class="model-badge" id="badge-kimi25" onclick="selectBadge('nvidia')">🟢 Kimi2.5</span>
+    <span class="model-badge" id="badge-minimax25" onclick="selectBadge('minimax')">🟡 MiniMax2.5</span>
+  </div>
+  
+  <script>
+    let selectedModel = 'minimax';
+    
+    function selectBadge(model) {
+      console.log('selectBadge called with:', model);
+      selectedModel = model;
+      
+      // Update debug
+      document.getElementById('debug').innerHTML = 'Debug: Selected: <strong>' + model + '</strong>';
+      
+      // Update classes
+      document.querySelectorAll('.model-badge').forEach(badge => {
+        badge.classList.remove('selected', 'selected.green', 'selected.yellow');
+      });
+      
+      const selectedBadge = document.getElementById('badge-' + model);
+      if (selectedBadge) {
+        selectedBadge.classList.add('selected');
+        if (model === 'nvidia') selectedBadge.classList.add('selected.green');
+        if (model === 'minimax') selectedBadge.classList.add('selected.yellow');
+      }
+    }
+    
+    // Auto-select minimax on load
+    window.addEventListener('DOMContentLoaded', function() {
+      console.log('DOM loaded');
+      selectBadge('minimax');
+    });
+    
+    // Test function
+    window.testAll = function() {
+      console.log('=== TESTING ALL BADGES ===');
+      ['big-pickle', 'nvidia', 'minimax'].forEach(model => {
+        console.log('Clicking:', model);
+        document.getElementById('badge-' + model).click();
+      });
+    };
+  </script>
+  
+  <div style="margin-top: 20px;">
+    <button onclick="testAll()" style="padding: 10px 20px; background: #00e5ff; border: none; border-radius: 4px; color: #000; cursor: pointer;">
+      🚀 Test All Badges
+    </button>
+  </div>
+</body>
+</html>

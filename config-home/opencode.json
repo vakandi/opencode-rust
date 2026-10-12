@@ -1,0 +1,15 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "openrouter": {
+      "options": {
+        "baseURL": "https://openrouter.ai/api/v1",
+        "apiKey": "sk-or-v1-REDACTED",
+        "headers": {
+          "HTTP-Referer": "https://opencode.ai",
+          "X-OpenRouter-Title": "OpenCode"
+        }
+      }
+    }
+  }
+}

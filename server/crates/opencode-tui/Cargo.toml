@@ -1,0 +1,54 @@
+[package]
+name = "opencode-tui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+# Workspace dependencies
+opencode-core = { path = "../opencode-core" }
+opencode-util = { path = "../opencode-util" }
+opencode-config = { path = "../opencode-config" }
+opencode-provider = { path = "../opencode-provider" }
+opencode-session = { path = "../opencode-session" }
+opencode-agent = { path = "../opencode-agent" }
+opencode-tool = { path = "../opencode-tool" }
+opencode-mcp = { path = "../opencode-mcp" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+parking_lot = { workspace = true }
+chrono = { workspace = true }
+once_cell = { workspace = true }
+walkdir = { workspace = true }
+syntect = { workspace = true }
+
+# TUI dependencies
+ratatui = "0.27"
+crossterm = { version = "0.27", features = ["event-stream"] }
+atty = "0.2"
+nucleo-matcher = { workspace = true }
+similar = { workspace = true }
+
+# Additional dependencies
+tokio-stream = { workspace = true }
+futures = { workspace = true }
+unicode-width = "0.1"
+uuid = { workspace = true }
+reqwest = { workspace = true, features = ["blocking"] }
+dirs = { workspace = true }
+base64 = { workspace = true }
+pulldown-cmark = "0.13"
+
+# Test-only: tests/transcript_e2e.rs serves the real opencode-server router in-process and reads it
+# back through the TUI's own ApiClient, proving the contract against the actual serializer.
+# Do not remove — without it the wire contract is only checked against a hand-written fixture.
+[dev-dependencies]
+axum = { workspace = true }
+tokio = { workspace = true }
+opencode-server = { path = "../opencode-server" }

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RustingOpenCode (ROCode)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; color: #333; }
+    h1 { font-size: 1.5rem; }
+    a { color: #0066cc; }
+    ul { margin: 0.5rem 0; padding-left: 1.5rem; }
+    .muted { color: #666; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <h1>RustingOpenCode (ROCode)</h1>
+  <p class="muted">API server is running.</p>
+  <p>Use the <strong>TUI</strong> for the full experience:</p>
+  <pre><code>opencode tui</code></pre>
+  <p>API endpoints:</p>
+  <ul>
+    <li><a href="/health">/health</a> – server status</li>
+    <li><a href="/session">/session</a> – sessions (API)</li>
+    <li><a href="/provider">/provider</a> – providers</li>
+    <li><a href="/config">/config</a> – config</li>
+  </ul>
+</body>
+</html>

@@ -1,0 +1,81 @@
+{
+  "identity": {
+    "name": "EliaUI",
+    "subtitle": "Elia User Interface",
+    "version": "v2.1.0"
+  },
+  "stats": [
+    {
+      "label": "CPU",
+      "value": "—",
+      "unit": "%",
+      "id": "cpu",
+      "live": false
+    },
+    {
+      "label": "RAM",
+      "value": "—",
+      "unit": "GB",
+      "id": "ram",
+      "live": false
+    },
+    {
+      "label": "RÉSEAU",
+      "value": "—",
+      "unit": "MB/s",
+      "id": "net",
+      "live": false
+    }
+  ],
+  "menu": [
+    {
+      "label": "Games",
+      "icon": "🎮",
+      "items": [
+        "Dead Space",
+        "Limbo",
+        "Bastion",
+        "AIMP 2"
+      ]
+    },
+    {
+      "label": "Programs",
+      "icon": "⚙️",
+      "items": [
+        "Sprint Layout 5.0",
+        "Arduino IDE",
+        "VS Code"
+      ]
+    },
+    {
+      "label": "Skydrive",
+      "icon": "☁️",
+      "items": [
+        "Documents",
+        "Photos",
+        "Backups"
+      ]
+    },
+    {
+      "label": "Electronics",
+      "icon": "🔌",
+      "items": [
+        "Arduino",
+        "Raspberry Pi",
+        "ESP32"
+      ]
+    }
+  ],
+  "ntfy": {
+    "server": "https://ntfy.sh",
+    "topic": "jarvakandi",
+    "token": ""
+  },
+  "display": {
+    "position": "right",
+    "autoHideDelay": 8000,
+    "theme": "cyan",
+    "statusLive": true,
+    "voiceTrigger": false
+  }
+}

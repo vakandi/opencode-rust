@@ -1,0 +1,83 @@
+{
+  "app-clone-factory": {
+    "model": "opencode/space-bunny-free",
+    "variant": "max"
+  },
+  "app-qa-store-gate": {
+    "model": "zen-free/space-bunny-free",
+    "variant": "medium"
+  },
+  "boxing-audience-scout": {
+    "model": "zen-free/space-bunny-free",
+    "variant": "medium"
+  },
+  "china-companies-paypal-hunter": {
+    "model": "zen-free/ling-3.0-flash-fin-free",
+    "variant": "medium"
+  },
+  "cve-hunter": {
+    "model": "zen-free/space-bunny-free",
+    "variant": "max"
+  },
+  "deploymates-watch": {
+    "model": "zen-free/space-bunny-free",
+    "variant": "xhigh"
+  },
+  "easy-paypal-litige-hunter": {
+    "model": "zen-free/space-bunny-free",
+    "variant": "xhigh"
+  },
+  "elia": "opencode/big-pickle",
+  "job-hunter-ch-lu": {
+    "model": "zen-free/space-bunny-free",
+    "variant": "medium"
+  },
+  "linkedin-connector-ch-lu-fr": {
+    "model": "zen-free/space-bunny-free",
+    "variant": "medium"
+  },
+  "mirorpay-community-organic": {
+    "model": "zen-free/space-bunny-free",
+    "variant": "xhigh"
+  },
+  "mirorpay-seo": {
+    "model": "zen-free/space-bunny-free",
+    "variant": "xhigh"
+  },
+  "mirrorpay-telegram": {
+    "model": "zen-free/space-bunny-free",
+    "variant": ""
+  },
+  "precious-stone-metal-hunter": {
+    "model": "zen-free/space-bunny-free",
+    "variant": "xhigh"
+  },
+  "reddit-saas-scraper": {
+    "model": "zen-free/space-bunny-free",
+    "variant": ""
+  },
+  "refund-hunter": {
+    "model": "zen-free/ling-3.0-flash-fin-free",
+    "variant": "medium"
+  },
+  "scan-refund-hunter": {
+    "model": "zen-free/space-bunny-free",
+    "variant": "xhigh"
+  },
+  "shopify-refund-hunter": {
+    "model": "zen-free/ling-3.0-flash-fin-free",
+    "variant": "medium"
+  },
+  "test-delegator": {
+    "model": "zen-free/ling-3.0-flash-fin-free",
+    "variant": "medium"
+  },
+  "vcam-community-organic": {
+    "model": "zen-free/space-bunny-free",
+    "variant": ""
+  },
+  "vcam-seo": {
+    "model": "zen-free/space-bunny-free",
+    "variant": ""
+  }
+}

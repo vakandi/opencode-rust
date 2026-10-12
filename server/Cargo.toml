@@ -1,0 +1,83 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/opencode-core",
+    "crates/opencode-types",
+    "crates/opencode-util",
+    "crates/opencode-config",
+    "crates/opencode-grep",
+    "crates/opencode-permission",
+    "crates/opencode-provider",
+    "crates/opencode-session",
+    "crates/opencode-storage",
+    "crates/opencode-tool",
+    "crates/opencode-agent",
+    "crates/opencode-server",
+    "crates/opencode-watcher",
+    "crates/opencode-lsp",
+    "crates/opencode-mcp",
+    "crates/opencode-cli",
+    "crates/opencode-command",
+    "crates/opencode-plugin",
+    "crates/opencode-tui",
+    "crates/opencode-paths",
+    "crates/opencode-proxy",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["OpenCode Team"]
+license = "MIT"
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+rand = "0.8"
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+once_cell = "1"
+lazy_static = "1.4"
+regex = "1"
+glob = "0.3"
+hex = "0.4"
+clap = { version = "4", features = ["derive"] }
+notify = "7"
+walkdir = "2"
+nucleo-matcher = "=0.3.1"
+syntect = { version = "=5.3.0", default-features = false, features = ["default-syntaxes", "default-themes", "regex-onig"] }
+similar = "=2.7.0"
+dirs = "6"
+async-trait = "0.1"
+futures = "0.3"
+reqwest = { version = "0.12", features = ["json", "stream"] }
+reqwest-eventsource = "0.6"
+tokio-stream = "0.1"
+tokio-util = "0.7"
+pin-project-lite = "0.2"
+axum = "0.8"
+axum-extra = { version = "0.10", features = ["typed-header"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "fs", "trace"] }
+hyper = { version = "1", features = ["full"] }
+http-body-util = "0.1"
+async-process = "2"
+which = "7"
+content_inspector = "0.2"
+parking_lot = "0.12"
+dashmap = "6.1"
+url = "2.5"
+lsp-types = "0.97"
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+portable-pty = "0.8"
+oauth2 = "5"
+sha2 = "0.10"
+base64 = "0.22"
+tree-sitter = "0.24"
+tree-sitter-bash = "0.23"

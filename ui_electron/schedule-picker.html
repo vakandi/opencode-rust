@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;900&family=Share+Tech+Mono&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 100vw;
+      height: 100vh;
+      background: #0a0f1a;
+      font-family: 'Share Tech Mono', monospace;
+      color: #00e5ff;
+      user-select: none;
+      overflow: hidden;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      padding: 24px 28px;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+      flex-shrink: 0;
+    }
+    .title {
+      font-family: 'Orbitron', monospace;
+      font-size: 16px;
+      font-weight: 700;
+      color: #ff9800;
+      text-shadow: 0 0 12px rgba(255,152,0,0.6);
+      letter-spacing: 3px;
+    }
+    .agent-name {
+      font-family: 'Orbitron', monospace;
+      font-size: 10px;
+      color: rgba(0,229,255,0.5);
+      letter-spacing: 1px;
+      margin-bottom: 16px;
+      flex-shrink: 0;
+    }
+    .btn-close {
+      background: rgba(255,23,68,0.15);
+      border: 1px solid rgba(255,23,68,0.5);
+      color: #ff1744;
+      font-family: 'Orbitron', monospace;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 5px 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      letter-spacing: 2px;
+    }
+    .btn-close:hover {
+      background: rgba(255,23,68,0.3);
+      box-shadow: 0 0 10px rgba(255,23,68,0.4);
+    }
+    .presets-grid {
+      flex: 1;
+      overflow-y: auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding-right: 6px;
+      align-content: start;
+    }
+    .presets-grid::-webkit-scrollbar { width: 3px; }
+    .presets-grid::-webkit-scrollbar-track { background: rgba(0,229,255,0.04); }
+    .presets-grid::-webkit-scrollbar-thumb { background: rgba(0,229,255,0.2); border-radius: 2px; }
+    .preset-card {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      background: rgba(0,10,20,0.85);
+      border: 1px solid rgba(0,229,255,0.12);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .preset-card:hover {
+      border-color: rgba(0,229,255,0.35);
+      background: rgba(0,15,30,0.9);
+    }
+    .preset-card.selected {
+      border-color: rgba(255,152,0,0.6);
+      background: rgba(255,152,0,0.08);
+      box-shadow: 0 0 10px rgba(255,152,0,0.15);
+    }
+    .preset-icon {
+      font-size: 18px;
+      flex-shrink: 0;
+      width: 28px;
+      text-align: center;
+    }
+    .preset-label {
+      font-family: 'Orbitron', monospace;
+      font-size: 10px;
+      font-weight: 600;
+      color: rgba(0,229,255,0.7);
+      letter-spacing: 0.5px;
+    }
+    .preset-card.selected .preset-label {
+      color: #ff9800;
+      text-shadow: 0 0 6px rgba(255,152,0,0.4);
+    }
+    .preset-sub {
+      font-size: 9px;
+      color: rgba(0,229,255,0.3);
+      margin-top: 2px;
+    }
+    .preset-card.selected .preset-sub {
+      color: rgba(255,152,0,0.5);
+    }
+    .options-row {
+      display: none;
+      gap: 10px;
+      margin-top: 10px;
+      padding: 10px 12px;
+      background: rgba(255,152,0,0.05);
+      border: 1px solid rgba(255,152,0,0.2);
+      border-radius: 6px;
+      flex-shrink: 0;
+    }
+    .options-row.visible {
+      display: flex;
+      align-items: center;
+    }
+    .options-label {
+      font-family: 'Orbitron', monospace;
+      font-size: 9px;
+      color: rgba(255,152,0,0.6);
+      letter-spacing: 1px;
+      flex-shrink: 0;
+    }
+    .range-arrow {
+      font-size: 14px;
+      color: rgba(255,152,0,0.5);
+      flex-shrink: 0;
+    }
+    .range-summary {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px;
+      color: rgba(0,229,255,0.45);
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+    select {
+      background: rgba(0,10,20,0.9);
+      border: 1px solid rgba(0,229,255,0.25);
+      color: #00e5ff;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 12px;
+      padding: 5px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      outline: none;
+    }
+    select:focus {
+      border-color: rgba(255,152,0,0.5);
+    }
+    select option {
+      background: #0a0f1a;
+      color: #00e5ff;
+    }
+    .footer {
+      flex-shrink: 0;
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(0,229,255,0.08);
+    }
+    .btn-cancel {
+      background: rgba(0,229,255,0.08);
+      border: 1px solid rgba(0,229,255,0.25);
+      color: rgba(0,229,255,0.6);
+      font-family: 'Orbitron', monospace;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 7px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      letter-spacing: 2px;
+    }
+    .btn-cancel:hover {
+      background: rgba(0,229,255,0.15);
+      border-color: rgba(0,229,255,0.4);
+      color: #00e5ff;
+    }
+    .btn-save {
+      background: rgba(255,152,0,0.15);
+      border: 1px solid rgba(255,152,0,0.5);
+      color: #ff9800;
+      font-family: 'Orbitron', monospace;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 7px 24px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      letter-spacing: 2px;
+    }
+    .btn-save:hover {
+      background: rgba(255,152,0,0.3);
+      box-shadow: 0 0 12px rgba(255,152,0,0.4);
+    }
+    .btn-save:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+    .status-msg {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px;
+      color: rgba(0,230,118,0.7);
+      margin-top: 8px;
+      text-align: center;
+      flex-shrink: 0;
+      min-height: 14px;
+    }
+    .status-msg.error {
+      color: rgba(255,23,68,0.7);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="title">SCHEDULE</div>
+      <button class="btn-close" id="btn-close">X</button>
+    </div>
+    <div class="agent-name" id="agent-name">loading...</div>
+
+    <div class="presets-grid" id="presets-grid"></div>
+
+    <div class="options-row" id="options-range">
+      <span class="options-label">FROM</span>
+      <select id="range-start"></select>
+      <span class="range-arrow">→</span>
+      <span class="options-label">TO</span>
+      <select id="range-end"></select>
+      <span class="range-summary" id="range-summary"></span>
+    </div>
+    <div class="options-row" id="options-single-hour">
+      <span class="options-label">HOUR</span>
+      <select id="single-hour-select"></select>
+    </div>
+    <div class="options-row" id="options-weekly">
+      <span class="options-label">DAY</span>
+      <select id="day-select"></select>
+      <span class="options-label">HOUR</span>
+      <select id="weekly-hour-select"></select>
+    </div>
+
+    <div class="status-msg" id="status-msg"></div>
+    <div class="footer">
+      <button class="btn-cancel" id="btn-cancel">CANCEL</button>
+      <button class="btn-save" id="btn-save" disabled>SAVE</button>
+    </div>
+  </div>
+
+  <script>
+    const INTERVAL_PRESETS = [
+      { id: '20min',  label: 'EVERY 20 MIN',   icon: '⏱', stepMin: 20 },
+      { id: '30min',  label: 'EVERY 30 MIN',   icon: '⏱', stepMin: 30 },
+      { id: '1h',     label: 'EVERY 1 HOUR',   icon: '🕐', stepMin: 60 },
+      { id: '1h30',   label: 'EVERY 1H30',     icon: '🕐', stepMin: 90 },
+      { id: '2h',     label: 'EVERY 2 HOURS',  icon: '🕑', stepMin: 120 },
+      { id: '3h',     label: 'EVERY 3 HOURS',  icon: '🕒', stepMin: 180 },
+      { id: '4h',     label: 'EVERY 4 HOURS',  icon: '🕓', stepMin: 240 },
+      { id: '5h',     label: 'EVERY 5 HOURS',  icon: '🕔', stepMin: 300 },
+      { id: '12h',    label: 'EVERY 12 HOURS', icon: '🕛', stepMin: 720 },
+    ];
+    const ALL_PRESETS = [
+      ...INTERVAL_PRESETS,
+      { id: '24h',    label: 'EVERY 24H',  icon: '📆', type: 'single' },
+      { id: 'weekly', label: 'WEEKLY',     icon: '📅', type: 'weekly' },
+    ];
+
+    const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const DAY_VALUES = [1, 2, 3, 4, 5, 6, 0];
+
+    let agentName = '';
+    let selectedPreset = null;
+    let currentSchedule = null;
+
+    const grid = document.getElementById('presets-grid');
+    const optionsRange = document.getElementById('options-range');
+    const optionsSingleHour = document.getElementById('options-single-hour');
+    const optionsWeekly = document.getElementById('options-weekly');
+    const rangeStart = document.getElementById('range-start');
+    const rangeEnd = document.getElementById('range-end');
+    const rangeSummary = document.getElementById('range-summary');
+    const singleHourSelect = document.getElementById('single-hour-select');
+    const daySelect = document.getElementById('day-select');
+    const weeklyHourSelect = document.getElementById('weekly-hour-select');
+    const statusMsg = document.getElementById('status-msg');
+    const btnSave = document.getElementById('btn-save');
+
+    for (let h = 0; h < 24; h++) {
+      const label = `${String(h).padStart(2, '0')}:00`;
+      rangeStart.appendChild(new Option(label, h));
+      rangeEnd.appendChild(new Option(label, h));
+      singleHourSelect.appendChild(new Option(label, h));
+      weeklyHourSelect.appendChild(new Option(label, h));
+    }
+    rangeStart.value = 9;
+    rangeEnd.value = 21;
+    DAYS.forEach((d, i) => {
+      daySelect.appendChild(new Option(d, DAY_VALUES[i]));
+    });
+
+    function updateRangeSummary() {
+      if (!selectedPreset || selectedPreset.type) {
+        rangeSummary.textContent = '';
+        return;
+      }
+      const start = parseInt(rangeStart.value, 10);
+      const end = parseInt(rangeEnd.value, 10);
+      const step = selectedPreset.stepMin;
+      let count = 0;
+      for (let m = start * 60; m <= end * 60; m += step) count++;
+      rangeSummary.textContent = `${count} runs/day`;
+    }
+
+    function renderPresets() {
+      grid.innerHTML = '';
+      ALL_PRESETS.forEach(p => {
+        const card = document.createElement('div');
+        card.className = 'preset-card';
+        card.dataset.id = p.id;
+        const sub = p.stepMin ? `${p.stepMin}min step` : (p.type || 'calendar');
+        card.innerHTML = `
+          <span class="preset-icon">${p.icon}</span>
+          <div>
+            <div class="preset-label">${p.label}</div>
+            <div class="preset-sub">${sub}</div>
+          </div>
+        `;
+        card.addEventListener('click', () => selectPreset(p.id));
+        grid.appendChild(card);
+      });
+    }
+
+    function selectPreset(id) {
+      selectedPreset = ALL_PRESETS.find(p => p.id === id);
+      if (!selectedPreset) return;
+
+      document.querySelectorAll('.preset-card').forEach(c => {
+        c.classList.toggle('selected', c.dataset.id === id);
+      });
+
+      const isInterval = !selectedPreset.type;
+      optionsRange.classList.toggle('visible', isInterval);
+      optionsSingleHour.classList.toggle('visible', selectedPreset.type === 'single');
+      optionsWeekly.classList.toggle('visible', selectedPreset.type === 'weekly');
+      updateRangeSummary();
+      btnSave.disabled = false;
+      statusMsg.textContent = '';
+    }
+
+    function matchCurrentSchedule() {
+      if (!currentSchedule) return;
+      const cs = currentSchedule;
+
+      if (cs.type === 'interval' && cs.intervalSeconds) {
+        const sec = cs.intervalSeconds;
+        const min = sec / 60;
+        const match = INTERVAL_PRESETS.find(p => p.stepMin === min);
+        if (match) {
+          selectPreset(match.id);
+          return;
+        }
+      }
+
+      if (cs.type === 'calendar' && cs.intervals && cs.intervals.length === 1) {
+        const entry = cs.intervals[0];
+        if (entry.weekday !== undefined) {
+          selectPreset('weekly');
+          daySelect.value = entry.weekday;
+          weeklyHourSelect.value = entry.hour;
+        } else {
+          selectPreset('24h');
+          singleHourSelect.value = entry.hour;
+        }
+        return;
+      }
+
+      if (cs.type === 'calendar' && cs.intervals && cs.intervals.length > 1) {
+        const entries = cs.intervals.filter(i => i.weekday === undefined);
+        if (entries.length < 2) return;
+
+        const allMinutes = entries.map(e => e.hour * 60 + e.minute).sort((a, b) => a - b);
+        const diffs = [];
+        for (let i = 1; i < allMinutes.length; i++) diffs.push(allMinutes[i] - allMinutes[i - 1]);
+        const gcd = diffs.reduce((a, b) => {
+          while (b) { [a, b] = [b, a % b]; }
+          return a;
+        });
+        const stepMin = gcd || 60;
+
+        const match = INTERVAL_PRESETS.find(p => p.stepMin === stepMin);
+        if (match) {
+          selectPreset(match.id);
+        } else {
+          selectPreset('1h');
+        }
+
+        const startHour = Math.floor(allMinutes[0] / 60);
+        const endHour = Math.floor(allMinutes[allMinutes.length - 1] / 60);
+        rangeStart.value = startHour;
+        rangeEnd.value = endHour;
+        updateRangeSummary();
+      }
+    }
+
+    function buildScheduleConfig() {
+      if (!selectedPreset) return null;
+      const p = selectedPreset;
+      const startH = parseInt(rangeStart.value, 10);
+      const endH = parseInt(rangeEnd.value, 10);
+
+      if (!p.type) {
+        const step = p.stepMin;
+        const entries = [];
+        for (let m = startH * 60; m <= endH * 60; m += step) {
+          entries.push({ Hour: Math.floor(m / 60), Minute: m % 60 });
+        }
+        return { type: 'calendar', entries };
+      }
+
+      if (p.type === 'single') {
+        const h = parseInt(singleHourSelect.value, 10);
+        return { type: 'calendar', entries: [{ Hour: h, Minute: 0 }] };
+      }
+
+      if (p.type === 'weekly') {
+        const d = parseInt(daySelect.value, 10);
+        const h = parseInt(weeklyHourSelect.value, 10);
+        return { type: 'calendar', entries: [{ Hour: h, Minute: 0, Weekday: d }] };
+      }
+
+      return null;
+    }
+
+    document.getElementById('btn-save').addEventListener('click', () => {
+      const config = buildScheduleConfig();
+      if (!config) return;
+      btnSave.disabled = true;
+      statusMsg.textContent = 'SAVING...';
+      statusMsg.className = 'status-msg';
+      window.schedulePickerAPI.saveSchedule(agentName, config);
+    });
+
+    document.getElementById('btn-cancel').addEventListener('click', () => {
+      window.schedulePickerAPI.close();
+    });
+
+    document.getElementById('btn-close').addEventListener('click', () => {
+      window.schedulePickerAPI.close();
+    });
+
+    rangeStart.addEventListener('change', () => {
+      if (parseInt(rangeStart.value, 10) >= parseInt(rangeEnd.value, 10)) {
+        rangeEnd.value = Math.min(parseInt(rangeStart.value, 10) + 2, 23);
+      }
+      updateRangeSummary();
+    });
+    rangeEnd.addEventListener('change', () => {
+      if (parseInt(rangeEnd.value, 10) <= parseInt(rangeStart.value, 10)) {
+        rangeStart.value = Math.max(parseInt(rangeEnd.value, 10) - 2, 0);
+      }
+      updateRangeSummary();
+    });
+
+    window.schedulePickerAPI.onInit((data) => {
+      agentName = data.agentName;
+      currentSchedule = data.currentSchedule;
+      document.getElementById('agent-name').textContent = agentName.replace(/-/g, ' ').toUpperCase();
+      renderPresets();
+      matchCurrentSchedule();
+    });
+
+    window.schedulePickerAPI.onSaved((result) => {
+      if (result.success) {
+        statusMsg.textContent = 'SCHEDULE SAVED';
+        statusMsg.className = 'status-msg';
+        setTimeout(() => window.schedulePickerAPI.close(), 800);
+      } else {
+        statusMsg.textContent = 'ERROR: ' + (result.error || 'unknown');
+        statusMsg.className = 'status-msg error';
+        btnSave.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      font-family: 'Orbitron', 'Segoe UI', sans-serif;
+    }
+    .popup-container {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+    .bg-image {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+    .content {
+      position: relative;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      padding: 50px;
+    }
+    .title {
+      font-size: 34px;
+      font-weight: 700;
+      color: #00e5ff;
+      text-shadow: 0 0 15px rgba(0,229,255,0.8), 0 0 30px rgba(0,229,255,0.4);
+      margin-bottom: 25px;
+      letter-spacing: 4px;
+      font-family: 'Orbitron', monospace;
+    }
+    .message {
+      font-size: 18px;
+      color: #ffffff;
+      text-align: center;
+      margin-bottom: 60px;
+      line-height: 1.6;
+      opacity: 0.95;
+      font-family: 'Segoe UI', sans-serif;
+    }
+    .buttons {
+      display: flex;
+      gap: 30px;
+    }
+    .btn {
+      padding: 16px 55px;
+      border: none;
+      border-radius: 6px;
+      font-size: 18px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      letter-spacing: 2px;
+      font-family: 'Orbitron', monospace;
+    }
+    .btn-confirm {
+      background: linear-gradient(180deg, #00c853 0%, #00a844 100%);
+      color: #ffffff;
+      border: 2px solid #00e676;
+      box-shadow: 0 0 15px rgba(0,200,83,0.5), inset 0 1px 0 rgba(255,255,255,0.2);
+    }
+    .btn-confirm:hover {
+      background: linear-gradient(180deg, #00e676 0%, #00c853 100%);
+      transform: scale(1.05);
+      box-shadow: 0 0 25px rgba(0,230,118,0.7);
+    }
+    .btn-cancel {
+      background: linear-gradient(180deg, #ff5252 0%, #d32f2f 100%);
+      color: #ffffff;
+      border: 2px solid #ff8a80;
+      box-shadow: 0 0 15px rgba(255,82,82,0.5), inset 0 1px 0 rgba(255,255,255,0.2);
+    }
+    .btn-cancel:hover {
+      background: linear-gradient(180deg, #ff8a80 0%, #ff5252 100%);
+      transform: scale(1.05);
+      box-shadow: 0 0 25px rgba(255,138,128,0.7);
+    }
+  </style>
+</head>
+<body>
+  <div class="popup-container">
+    <img class="bg-image" src="./imgs/EliaPopup.png" alt="">
+    <div class="content">
+      <div class="title">☀️ MORNING ROUTINE</div>
+      <div class="message">Voulez-vous lancer la routine matinale<br>d'Elia maintenant ?</div>
+      <div class="buttons">
+        <button class="btn btn-confirm" id="btn-confirm">LANCER</button>
+        <button class="btn btn-cancel" id="btn-cancel">ANNULER</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    document.getElementById('btn-confirm').addEventListener('click', () => {
+      window.popupAPI.runMorning();
+      window.popupAPI.close();
+    });
+    document.getElementById('btn-cancel').addEventListener('click', () => {
+      window.popupAPI.close();
+    });
+  </script>
+</body>
+</html>

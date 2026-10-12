@@ -1,0 +1,26 @@
+{
+  "skill_name": "omp-hunters-team-check",
+  "evals": [
+    {
+      "id": 1,
+      "eval_name": "full-team-check-standard",
+      "prompt": "Run the hunters team check — verify all 6 refund agents completed their last 7 days of website testing in Google Docs",
+      "expected_output": "Triggers all 6 agents, verifies 7 days of Google Docs per agent, creates team_check_summary.md in each agent's workspace and a master report in refund-hunter's workspace, flags any missing/broken sites and appends them",
+      "files": ["omp-server/data/runs.json", "subworkers/refund-hunter/workspace/GDOC_ID.txt"]
+    },
+    {
+      "id": 2,
+      "eval_name": "partial-team-check-subset",
+      "prompt": "Team check for just refund-hunter and scan-refund-hunter only — did they check their last 7 days?",
+      "expected_output": "Triggers only those 2 agents, verifies 7 days of Google Docs for each, reports findings only for those 2 agents",
+      "files": ["subworkers/refund-hunter/workspace/GDOC_ID.txt", "subworkers/scan-refund-hunter/workspace/GDOC_ID.txt"]
+    },
+    {
+      "id": 3,
+      "eval_name": "team-check-finds-missing-sites",
+      "prompt": "Team check — I think some sites are missing from last week's Google Docs. Find them and fix it.",
+      "expected_output": "Identifies missing domains across the 7-day window, appends them to old Google Docs via gws-workspace append-md, updates the master summary with the fix actions",
+      "files": ["subworkers/refund-hunter/workspace/2026-09-20/append_run*.md"]
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+[package]
+name = "opencode-storage"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+opencode-core = { path = "../opencode-core" }
+opencode-types = { path = "../opencode-types" }
+opencode-paths = { path = "../opencode-paths" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+dirs = { workspace = true }
+
+[dev-dependencies]
+tokio-test = "0.4"

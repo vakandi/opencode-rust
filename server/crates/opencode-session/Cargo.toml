@@ -1,0 +1,42 @@
+[package]
+name = "opencode-session"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+opencode-core = { path = "../opencode-core" }
+opencode-types = { path = "../opencode-types" }
+opencode-storage = { path = "../opencode-storage" }
+opencode-provider = { path = "../opencode-provider" }
+opencode-permission = { path = "../opencode-permission" }
+opencode-tool = { path = "../opencode-tool" }
+opencode-mcp = { path = "../opencode-mcp" }
+opencode-lsp = { path = "../opencode-lsp" }
+opencode-plugin = { path = "../opencode-plugin" }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+rand = { workspace = true }
+futures = { workspace = true }
+regex = { workspace = true }
+dirs = { workspace = true }
+glob = { workspace = true }
+reqwest = { workspace = true }
+sqlx = { workspace = true }
+url = { workspace = true }
+base64 = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+futures = { workspace = true }
+tokio-util = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+async-trait = { workspace = true }

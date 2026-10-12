@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      font-family: 'Orbitron', 'Segoe UI', sans-serif;
+    }
+    .popup-container {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+    .bg-image {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+    .content {
+      position: relative;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      padding: 50px;
+    }
+    .title {
+      font-size: 32px;
+      font-weight: 700;
+      color: #ff5252;
+      text-shadow: 0 0 15px rgba(255,82,82,0.8), 0 0 30px rgba(255,82,82,0.4);
+      margin-bottom: 25px;
+      letter-spacing: 3px;
+      font-family: 'Orbitron', monospace;
+    }
+    .message {
+      font-size: 16px;
+      color: #ffffff;
+      text-align: center;
+      margin-bottom: 25px;
+      line-height: 1.6;
+      opacity: 0.95;
+      font-family: 'Segoe UI', sans-serif;
+    }
+    .code {
+      font-family: 'Monaco', 'Menlo', monospace;
+      background: rgba(0,0,0,0.5);
+      padding: 12px 25px;
+      border-radius: 6px;
+      color: #00e5ff;
+      font-size: 15px;
+      margin-bottom: 50px;
+      border: 1px solid rgba(0,229,255,0.3);
+    }
+    .btn-ok {
+      padding: 16px 60px;
+      border: none;
+      border-radius: 6px;
+      font-size: 18px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      letter-spacing: 2px;
+      font-family: 'Orbitron', monospace;
+      background: linear-gradient(180deg, #ff5252 0%, #d32f2f 100%);
+      color: #ffffff;
+      border: 2px solid #ff8a80;
+      box-shadow: 0 0 15px rgba(255,82,82,0.5), inset 0 1px 0 rgba(255,255,255,0.2);
+    }
+    .btn-ok:hover {
+      background: linear-gradient(180deg, #ff8a80 0%, #ff5252 100%);
+      transform: scale(1.05);
+      box-shadow: 0 0 25px rgba(255,138,128,0.7);
+    }
+  </style>
+</head>
+<body>
+  <div class="popup-container">
+    <img class="bg-image" src="./imgs/EliaPopup.png" alt="">
+    <div class="content">
+      <div class="title">⚠️ PROXY NOT FOUND</div>
+      <div class="message">proxychains4 is not installed.<br>Install it with Homebrew first:</div>
+      <div class="code">brew install proxychains-ng</div>
+      <button class="btn-ok" id="btn-ok">OK</button>
+    </div>
+  </div>
+  <script>
+    document.getElementById('btn-ok').addEventListener('click', () => {
+      window.popupAPI.close();
+    });
+  </script>
+</body>
+</html>

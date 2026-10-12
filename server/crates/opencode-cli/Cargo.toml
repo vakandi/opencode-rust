@@ -1,0 +1,43 @@
+[package]
+name = "opencode-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "opencode"
+path = "src/main.rs"
+
+[dependencies]
+opencode-core = { path = "../opencode-core" }
+opencode-util = { path = "../opencode-util" }
+opencode-config = { path = "../opencode-config" }
+opencode-grep = { path = "../opencode-grep" }
+opencode-permission = { path = "../opencode-permission" }
+opencode-server = { path = "../opencode-server" }
+opencode-agent = { path = "../opencode-agent" }
+opencode-provider = { path = "../opencode-provider" }
+opencode-plugin = { path = "../opencode-plugin" }
+opencode-session = { path = "../opencode-session" }
+opencode-storage = { path = "../opencode-storage" }
+opencode-tool = { path = "../opencode-tool" }
+opencode-tui = { path = "../opencode-tui" }
+opencode-types = { path = "../opencode-types" }
+opencode-command = { path = "../opencode-command" }
+opencode-lsp = { path = "../opencode-lsp" }
+opencode-paths = { path = "../opencode-paths" }
+clap = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+futures = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { workspace = true }
+chrono = { workspace = true }
+dirs = { workspace = true }
+sqlx = { workspace = true }
+url = { workspace = true }
+which = { workspace = true }

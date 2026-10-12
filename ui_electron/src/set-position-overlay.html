@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      margin: 0;
+      background: rgba(0,0,0,0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      font-family: system-ui, sans-serif;
+      color: #fff;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+      cursor: crosshair;
+      user-select: none;
+    }
+    .hint {
+      font-size: 18px;
+      text-align: center;
+      padding: 24px;
+    }
+  </style>
+</head>
+<body>
+  <div class="hint">Click anywhere to set EliaUI position (center of UI will go here)</div>
+  <script>
+    document.body.addEventListener('click', function(e) {
+      window.setPositionClick(e.screenX, e.screenY);
+    }, { once: true });
+  </script>
+</body>
+</html>

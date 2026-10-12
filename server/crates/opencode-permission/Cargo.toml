@@ -1,0 +1,18 @@
+[package]
+name = "opencode-permission"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+opencode-core = { path = "../opencode-core" }
+opencode-plugin = { path = "../opencode-plugin" }
+glob = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+dirs = { workspace = true }
+lazy_static = { workspace = true }
+tokio = { workspace = true }

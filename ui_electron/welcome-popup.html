@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      font-family: 'Orbitron', 'Segoe UI', sans-serif;
+    }
+    .popup-container {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+    .bg-image {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+    .close-btn {
+      position: absolute;
+      z-index: 10;
+      top: 58%;
+      left: 50%;
+      transform: translateX(-50%);
+      cursor: pointer;
+      transition: transform 0.2s ease, filter 0.2s ease;
+    }
+    .close-btn:hover {
+      transform: translateX(-50%) scale(1.1);
+      filter: brightness(1.2);
+    }
+    .close-btn img {
+      width: 240px;
+      height: auto;
+    }
+    .github-btn {
+      position: absolute;
+      z-index: 10;
+      top: 20px;
+      right: 20px;
+      cursor: pointer;
+      transition: transform 0.2s ease, filter 0.2s ease;
+    }
+    .github-btn:hover {
+      transform: scale(1.1);
+      filter: brightness(1.2);
+    }
+    .github-btn img {
+      width: 156px;
+      height: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="popup-container">
+    <img class="bg-image" src="./imgs/EliaPopup.png" alt="">
+    <div class="github-btn" id="btn-github">
+      <img src="./imgs/github.png" alt="GitHub">
+    </div>
+    <div class="close-btn" id="btn-close">
+      <img src="./imgs/close.png" alt="Close">
+    </div>
+  </div>
+  <script>
+    document.getElementById('btn-close').addEventListener('click', () => {
+      window.popupAPI.close();
+    });
+    document.getElementById('btn-github').addEventListener('click', () => {
+      window.popupAPI.openUrl('https://github.com/vakandi');
+    });
+  </script>
+</body>
+</html>

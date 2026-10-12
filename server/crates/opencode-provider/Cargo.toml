@@ -1,0 +1,31 @@
+[package]
+name = "opencode-provider"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+rand = { workspace = true }
+opencode-core = { path = "../opencode-core" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+reqwest = { workspace = true }
+reqwest-eventsource = { workspace = true }
+tokio-stream = { workspace = true }
+pin-project-lite = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+sha2 = "0.10"
+hmac = "0.12"
+hex = "0.4"
+urlencoding = "2.1"
+dirs = { workspace = true }
+regex = { workspace = true }
+once_cell = { workspace = true }

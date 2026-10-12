@@ -1,0 +1,23 @@
+[package]
+name = "opencode-agent"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+opencode-core = { path = "../opencode-core" }
+opencode-provider = { path = "../opencode-provider" }
+opencode-permission = { path = "../opencode-permission" }
+opencode-tool = { path = "../opencode-tool" }
+opencode-config = { path = "../opencode-config" }
+opencode-plugin = { path = "../opencode-plugin" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+uuid = { workspace = true }

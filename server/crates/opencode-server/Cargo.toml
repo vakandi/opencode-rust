@@ -1,0 +1,43 @@
+[package]
+name = "opencode-server"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+opencode-core = { path = "../opencode-core" }
+opencode-agent = { path = "../opencode-agent" }
+opencode-provider = { path = "../opencode-provider" }
+opencode-session = { path = "../opencode-session" }
+opencode-storage = { path = "../opencode-storage" }
+opencode-types = { path = "../opencode-types" }
+opencode-config = { path = "../opencode-config" }
+opencode-mcp = { path = "../opencode-mcp" }
+opencode-plugin = { path = "../opencode-plugin" }
+opencode-paths = { path = "../opencode-paths" }
+opencode-proxy = { path = "../opencode-proxy" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+futures = { workspace = true }
+async-trait = { workspace = true }
+axum = { version = "0.8", features = ["ws"] }
+axum-extra = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+tokio-stream = { workspace = true, features = ["sync"] }
+tokio-tungstenite = "0.26"
+dirs = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+once_cell = { workspace = true }
+portable-pty = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+tower = { workspace = true, features = ["util"] }
+http-body-util = { workspace = true }
