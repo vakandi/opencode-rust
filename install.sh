@@ -33,7 +33,6 @@ die() { printf '[install] ERROR: %s\n' "$*" >&2; exit 1; }
 
 BIN_SRC="$SERVER_DIR/target/release/opencode"
 BIN_DST="$HOME/.local/bin/opr"
-GILFOYLE_DST="$HOME/.local/bin/gilfoyle"
 STAMP="$SERVER_DIR/target/.opr-build-stamp"
 
 FORCE=0
@@ -113,19 +112,27 @@ EOF
 chmod +x "$BIN_DST"
 log "installed $BIN_DST (opr: tui / serve / run)"
 
-# `gilfoyle "prompt"` is shorthand for `opr run "prompt"`. On a case-insensitive filesystem
-# (macOS default) `Gilfoyle` resolves to this same file, so both spellings work.
-cat > "$GILFOYLE_DST" <<EOF
+# `setbon "p"`, `googlebot "p"`, `gilfoyle "p"` each run one prompt as that named agent.
+# On a case-insensitive filesystem (macOS default) `Setbon`/`GoogleBot`/`Gilfoyle` resolve to
+# these same files, so both spellings work.
+make_agent_alias() {
+  local name="$1"
+  cat > "$HOME/.local/bin/$name" <<EOF
 #!/usr/bin/env bash
-# gilfoyle — run one prompt to completion via opr run.
+# $name — run one prompt to completion as the "$name" agent.
 if [ \$# -eq 0 ]; then
-  echo "usage: gilfoyle \"<prompt>\"" >&2
+  echo "usage: $name \"<prompt>\"" >&2
   exit 2
 fi
-exec "$BIN_DST" run "\$@"
+exec "$BIN_DST" run --agent "$name" "\$@"
 EOF
-chmod +x "$GILFOYLE_DST"
-log "installed $GILFOYLE_DST (gilfoyle: run one prompt)"
+  chmod +x "$HOME/.local/bin/$name"
+  log "installed $HOME/.local/bin/$name ($name: run one prompt)"
+}
+
+for agent_alias in gilfoyle setbon googlebot; do
+  make_agent_alias "$agent_alias"
+done
 
 if [ ! -L "$ROOT/config-xdg/opencode" ]; then
   mkdir -p "$ROOT/config-xdg"
