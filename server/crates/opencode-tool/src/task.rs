@@ -25,8 +25,6 @@ struct TaskInput {
     task_id: Option<String>,
     command: Option<String>,
     load_skills: Option<Vec<String>>,
-    #[serde(default)]
-    run_in_background: bool,
 }
 
 #[async_trait]
@@ -67,10 +65,6 @@ impl Tool for TaskTool {
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "Skills to load for the sub-agent (optional)"
-                },
-                "run_in_background": {
-                    "type": "boolean",
-                    "description": "Run the task in background (default: false)"
                 }
             },
             "required": ["subagent_type", "description", "prompt"]

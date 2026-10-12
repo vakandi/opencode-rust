@@ -112,6 +112,8 @@ enum Commands {
         variant: Option<String>,
         #[arg(long, default_value_t = false)]
         thinking: bool,
+        #[arg(long, value_name = "SECONDS")]
+        wait_background_timeout: Option<u64>,
     },
     #[command(about = "Start HTTP server")]
     Serve {
@@ -652,6 +654,7 @@ async fn main() -> anyhow::Result<()> {
             port,
             variant,
             thinking,
+            wait_background_timeout,
         }) => {
             run_non_interactive(
                 message,
@@ -670,6 +673,7 @@ async fn main() -> anyhow::Result<()> {
                 port,
                 variant,
                 thinking,
+                wait_background_timeout,
             )
             .await?;
         }
@@ -1332,7 +1336,24 @@ async fn run_non_interactive_attach(
         anyhow::bail!("Remote run failed ({}): {}", status, body);
     }
 
-    consume_remote_sse(response, &session_id, format).await
+    consume_remote_sse(response, &session_id, format).await?;
+
+    // The SSE body ends with the provider stream, not with the session. A turn that spawned
+    // subagents or background work on the server host would still be running at this point, and
+    // exiting here is the cut-off this whole change exists to remove.
+    let drain = opencode_cli::remote_status::wait_remote_idle(
+        &client,
+        &base_url,
+        &session_id,
+        std::time::Duration::from_secs(120),
+        std::time::Duration::from_millis(500),
+    )
+    .await;
+    if drain != opencode_cli::remote_status::RemoteDrain::Idle {
+        eprintln!("run --attach: remote drain ended as {drain:?}");
+    }
+
+    Ok(())
 }
 
 async fn run_non_interactive(
@@ -1352,6 +1373,7 @@ async fn run_non_interactive(
     _port: Option<u16>,
     variant: Option<String>,
     _thinking: bool,
+    wait_background_timeout: Option<u64>,
 ) -> anyhow::Result<()> {
     if let Some(dir) = dir {
         std::env::set_current_dir(&dir).map_err(|e| {
@@ -1408,24 +1430,178 @@ async fn run_non_interactive(
 
     if input.trim().is_empty() {
         let (provider, model_id) = parse_model_and_provider(model);
-        return run_chat_session(model_id, provider, agent_name, None, false).await;
+        return run_chat_session(
+            model_id,
+            provider,
+            agent_name,
+            None,
+            false,
+            format.clone(),
+            wait_background_timeout,
+        )
+        .await;
     }
 
     let (provider, model_id) = parse_model_and_provider(model);
-    run_chat_session(model_id, provider, agent_name, Some(input.clone()), true).await?;
+    run_chat_session(
+        model_id,
+        provider,
+        agent_name,
+        Some(input.clone()),
+        true,
+        format.clone(),
+        wait_background_timeout,
+    )
+    .await?;
+
+    // `run_single_shot_turn` already emits the JSON envelope, including the real outcome and the
+    // background drain result; printing one here too would double every record.
+    Ok(())
+}
+
+/// Runs `opencode run <prompt>` to completion.
+///
+/// The old path stopped at the first `StreamEvent::Done`, so a turn that spawned a subagent or a
+/// background task exited and took the work with it. This drives the session loop instead, then
+/// holds the process open until omo's child sessions and background ledger are quiet.
+async fn run_single_shot_turn(
+    provider_registry: Arc<ProviderRegistry>,
+    provider_id: String,
+    model_id: String,
+    system_prompt: String,
+    prompt_text: String,
+    format: RunOutputFormat,
+    wait_background_timeout: Option<u64>,
+) -> anyhow::Result<()> {
+    let Some(provider) = provider_registry.get(&provider_id) else {
+        anyhow::bail!("no provider configured for '{provider_id}'");
+    };
+
+    let cwd = std::env::current_dir()?;
+    let mut session = opencode_session::session::Session::new(
+        cwd.to_string_lossy().to_string(),
+        cwd.to_string_lossy().to_string(),
+    );
+    let session_id = session.id.clone();
+
+    let mut driver = opencode_cli::run_session::RunSessionDriver::with_model(
+        provider,
+        session,
+        Some(system_prompt),
+        opencode_session::prompt::AgentParams::default(),
+        provider_id,
+        model_id,
+    )
+    .await;
+
+    let outcome = driver.run_turn(&prompt_text).await?;
+    let outcome = match outcome {
+        opencode_cli::run_session::TurnOutcome::Completed => "completed",
+        opencode_cli::run_session::TurnOutcome::MaxStepsTruncated => "max_steps",
+        opencode_cli::run_session::TurnOutcome::Failed(ref e) => {
+            eprintln!("\nError: {}", e);
+            "failed"
+        }
+    };
+
+    let drained = drain_background_work(&session_id, wait_background_timeout).await;
 
     if matches!(format, RunOutputFormat::Json) {
         println!(
             "{}",
             serde_json::json!({
-                "type": "completed",
+                "type": outcome,
+                "sessionID": session_id,
+                "input": prompt_text,
+                "background": drained,
                 "timestamp": chrono::Utc::now().timestamp_millis(),
-                "input": input
             })
         );
     }
 
+    if outcome != "completed" {
+        std::process::exit(1);
+    }
     Ok(())
+}
+
+/// Holds the process open until no child session and no omo background task is still running.
+///
+/// Children live in omo's own database (`~/.local/share/opencode/opencode.db`, singular schema),
+/// keyed by `parent_id`. A child is finished once it stops producing new parts.
+async fn drain_background_work(
+    session_id: &str,
+    wait_background_timeout: Option<u64>,
+) -> serde_json::Value {
+    let opts = opencode_cli::background::DrainOptions {
+        timeout: std::time::Duration::from_secs(wait_background_timeout.unwrap_or(120)),
+        ..Default::default()
+    };
+    let cwd = std::env::current_dir().unwrap_or_default();
+
+    let Some(db) = opencode_cli::children::omo_db_path() else {
+        let report = opencode_cli::background::wait_for_background_idle(&cwd, session_id, opts).await;
+        return serde_json::json!({ "omo_db": false, "ledger": format!("{report:?}") });
+    };
+
+    let mut cursors: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut seen_children: Vec<String> = Vec::new();
+    let mut last_change = std::time::Instant::now();
+
+    let deadline = std::time::Instant::now() + opts.timeout;
+    let children = loop {
+        let found = opencode_cli::children::list_children(&db, session_id).await;
+        let fresh: Vec<_> = found
+            .iter()
+            .filter(|c| !seen_children.contains(&c.id))
+            .collect();
+
+        if !fresh.is_empty() {
+            for child in fresh {
+                println!("\n[subagent: {}]", child.title);
+                seen_children.push(child.id.clone());
+                cursors.insert(child.id.clone(), String::new());
+            }
+            last_change = std::time::Instant::now();
+        }
+
+        let mut progressed = false;
+        for (child_id, cursor) in cursors.iter_mut() {
+            for frame in opencode_cli::livestream::poll_frames(&db, child_id, cursor).await {
+                if !frame.text.is_empty() {
+                    print!("{}", frame.text);
+                    let _ = std::io::Write::flush(&mut std::io::stdout());
+                }
+                *cursor = frame.part_id;
+                progressed = true;
+            }
+        }
+        if progressed {
+            last_change = std::time::Instant::now();
+        }
+
+        if std::time::Instant::now() >= deadline {
+            break found;
+        }
+        // Quiet only when no child has produced anything for a full stale window, or none exist.
+        if found.is_empty() {
+            break found;
+        }
+        if last_change.elapsed() >= opts.stale_after {
+            break found;
+        }
+        tokio::time::sleep(opts.poll_interval).await;
+    };
+
+    let ledger = opencode_cli::background::wait_for_background_idle(&cwd, session_id, opts).await;
+    if !children.is_empty() {
+        println!();
+    }
+    serde_json::json!({
+        "omo_db": true,
+        "children": children.iter().map(|c| c.id.clone()).collect::<Vec<_>>(),
+        "ledger": format!("{ledger:?}"),
+    })
 }
 
 async fn run_chat_session(
@@ -1434,6 +1610,8 @@ async fn run_chat_session(
     agent_name: String,
     initial_prompt: Option<String>,
     single_shot: bool,
+    format: RunOutputFormat,
+    wait_background_timeout: Option<u64>,
 ) -> anyhow::Result<()> {
     let current_dir = std::env::current_dir()?;
     let config = load_config(&current_dir)?;
@@ -1496,32 +1674,37 @@ async fn run_chat_session(
     let mut executor =
         AgentExecutor::new(agent_info.clone(), provider_registry.clone(), tool_registry);
 
-    // Build model-specific system prompt + environment context (TS parity: SystemPrompt.provider + SystemPrompt.environment)
-    {
-        let (model_api_id, provider_id) = match &agent_info.model {
-            Some(m) => (m.model_id.clone(), m.provider_id.clone()),
-            None => (
-                "claude-sonnet-4-20250514".to_string(),
-                "anthropic".to_string(),
-            ),
-        };
-        let model_prompt = SystemPrompt::for_model(&model_api_id);
-        let env_ctx = EnvironmentContext::from_current(
-            &model_api_id,
-            &provider_id,
-            current_dir.to_string_lossy().as_ref(),
-        );
-        let env_prompt = SystemPrompt::environment(&env_ctx);
-        let full_prompt = format!("{}\n\n{}", model_prompt, env_prompt);
-        executor = executor.with_system_prompt(full_prompt);
-    }
+    let (model_api_id, model_provider_id) = match &agent_info.model {
+        Some(m) => (m.model_id.clone(), m.provider_id.clone()),
+        None => (
+            "claude-sonnet-4-20250514".to_string(),
+            "anthropic".to_string(),
+        ),
+    };
+    let model_prompt = SystemPrompt::for_model(&model_api_id);
+    let env_ctx = EnvironmentContext::from_current(
+        &model_api_id,
+        &model_provider_id,
+        current_dir.to_string_lossy().as_ref(),
+    );
+    let full_prompt = format!("{}\n\n{}", model_prompt, SystemPrompt::environment(&env_ctx));
+    executor = executor.with_system_prompt(full_prompt.clone());
 
     if let Some(prompt_text) = initial_prompt {
+        if single_shot {
+            return run_single_shot_turn(
+                provider_registry.clone(),
+                model_provider_id,
+                model_api_id,
+                full_prompt,
+                prompt_text,
+                format,
+                wait_background_timeout,
+            )
+            .await;
+        }
         println!("User: {}", prompt_text);
         process_message(&mut executor, &prompt_text).await?;
-        if single_shot {
-            return Ok(());
-        }
     }
 
     let stdin = io::stdin();

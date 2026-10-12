@@ -9,6 +9,10 @@ license.workspace = true
 name = "opencode"
 path = "src/main.rs"
 
+[lib]
+name = "opencode_cli"
+path = "src/lib.rs"
+
 [dependencies]
 opencode-core = { path = "../opencode-core" }
 opencode-util = { path = "../opencode-util" }
@@ -41,3 +45,7 @@ dirs = { workspace = true }
 sqlx = { workspace = true }
 url = { workspace = true }
 which = { workspace = true }
+
+[dev-dependencies]
+async-trait = { workspace = true }
+tempfile = "3"
