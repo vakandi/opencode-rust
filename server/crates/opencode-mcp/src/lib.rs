@@ -10,6 +10,8 @@ pub use client::{
     MCP_TOOLS_CHANGED_EVENT,
 };
 pub use oauth::{AuthStatus, McpOAuthConfig, McpOAuthManager, OAuthError, OAuthRegistry};
-pub use protocol::{JsonRpcNotification, JsonRpcRequest, JsonRpcResponse};
+pub use protocol::{
+    CallToolResult, ContentBlock, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse,
+};
 pub use tool::{McpTool, McpToolRegistry};
 pub use transport::{HttpTransport, McpTransport, SseTransport, StdioTransport};

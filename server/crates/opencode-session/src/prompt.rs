@@ -4089,6 +4089,7 @@ mod tests {
                 text: "Say hello".to_string(),
             }],
             tools: None,
+            permission: None,
         };
 
         prompt
@@ -4143,6 +4144,7 @@ mod tests {
             system: None,
             variant: None,
             tools: None,
+            permission: None,
             parts: vec![PartInput::Subtask {
                 prompt: "Inspect codegen path".to_string(),
                 description: Some("Inspect codegen".to_string()),
@@ -4189,6 +4191,7 @@ mod tests {
             system: None,
             variant: None,
             tools: None,
+            permission: None,
             parts: vec![PartInput::File {
                 url: "data:text/plain;base64,SGVsbG8=".to_string(),
                 filename: Some("inline.txt".to_string()),
@@ -4241,6 +4244,7 @@ mod tests {
             system: None,
             variant: None,
             tools: None,
+            permission: None,
             parts: vec![PartInput::File {
                 url: url.to_string(),
                 filename: Some("sample.rs".to_string()),
@@ -4301,6 +4305,7 @@ mod tests {
             system: None,
             variant: None,
             tools: None,
+            permission: None,
             parts: vec![PartInput::File {
                 url: file_url,
                 filename: Some("sample.rs".to_string()),
@@ -4361,6 +4366,7 @@ mod tests {
             system: None,
             variant: None,
             tools: None,
+            permission: None,
             parts: vec![
                 PartInput::File {
                     url: url::Url::from_file_path(&file_a)
@@ -4432,6 +4438,7 @@ mod tests {
             system: None,
             variant: None,
             tools: None,
+            permission: None,
             parts: vec![PartInput::File {
                 url: file_url,
                 filename: Some("sample.rs".to_string()),

@@ -1708,7 +1708,11 @@ async fn run_prompt_turn(
         }
     });
 
-    let tools = opencode_session::default_tool_definitions().await;
+    let builtins = opencode_session::default_tool_definitions().await;
+    let tools = opencode_session::prompt::merge_tool_definitions(
+        builtins,
+        crate::mcp_loader::configured_tools(),
+    );
     let environment = opencode_session::system::EnvironmentContext::from_current(
         &model_id,
         &provider_id,

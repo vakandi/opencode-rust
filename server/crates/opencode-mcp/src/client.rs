@@ -656,6 +656,11 @@ pub struct McpClientRegistry {
     logs: RwLock<HashMap<String, Vec<String>>>,
 }
 impl McpClientRegistry {
+    /// The live client for a started server, so a tool call can be forwarded to it.
+    pub async fn client(&self, name: &str) -> Option<Arc<McpClient>> {
+        self.clients.read().await.get(name).cloned()
+    }
+
     pub fn new() -> Self {
         Self {
             clients: RwLock::new(HashMap::new()),

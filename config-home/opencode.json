@@ -11,5 +11,48 @@
         }
       }
     }
+  },
+  "mcp": {
+    "parallel-browser-mcp": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "parallel-browser-mcp@latest"
+      ],
+      "enabled": true,
+      "environment": {
+        "BROWSER_MCP_CONFIG": "{\"defaultProvider\":\"playwright\",\"providers\":{\"playwright\":{\"launchOptions\":{\"headless\":true}}}}"
+      }
+    },
+    "undetected-browser": {
+      "type": "local",
+      "command": [
+        "node",
+        "/Users/vakandi/.config/undetected-browser/daemon/shim.js"
+      ],
+      "enabled": true,
+      "environment": {
+        "UB_SOCKET": "/Users/vakandi/.config/undetected-browser/daemon.sock"
+      }
+    },
+    "personal_browser": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "@playwright/mcp@latest",
+        "--extension",
+        "--browser",
+        "msedge",
+        "--profile-dir-name",
+        "Default"
+      ],
+      "enabled": true,
+      "environment": {
+        "PLAYWRIGHT_MCP_EXTENSION": "true",
+        "PLAYWRIGHT_MCP_EXTENSION_TOKEN": "PLAYWRIGHT_MCP_EXTENSION_TOKEN_REDACTED"
+      }
+    }
   }
 }

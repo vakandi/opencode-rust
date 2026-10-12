@@ -13,6 +13,7 @@ opencode-session = { path = "../opencode-session" }
 opencode-storage = { path = "../opencode-storage" }
 opencode-types = { path = "../opencode-types" }
 opencode-config = { path = "../opencode-config" }
+opencode-tool = { path = "../opencode-tool" }
 opencode-mcp = { path = "../opencode-mcp" }
 opencode-plugin = { path = "../opencode-plugin" }
 opencode-paths = { path = "../opencode-paths" }

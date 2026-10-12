@@ -281,5 +281,29 @@ pub async fn create_default_registry() -> ToolRegistry {
             .await;
     }
 
+    // MCP tools live in the server crate, which depends on this one. The server hands the
+    // live registry over at boot; without this an MCP tool would be advertised to the
+    // model and then fail on execution as "not found in registry".
+    if let Some(mcp) = take_mcp_source() {
+        mcp(&registry).await;
+    }
+
     registry
+}
+
+/// Set by the server at boot. A function pointer avoids a circular crate dependency.
+pub type McpSource = Arc<
+    dyn Fn(&ToolRegistry) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + '_>>
+        + Send
+        + Sync,
+>;
+
+static MCP_SOURCE: std::sync::OnceLock<McpSource> = std::sync::OnceLock::new();
+
+pub fn set_mcp_source(source: McpSource) {
+    let _ = MCP_SOURCE.set(source);
+}
+
+pub(crate) fn take_mcp_source() -> Option<McpSource> {
+    MCP_SOURCE.get().cloned()
 }

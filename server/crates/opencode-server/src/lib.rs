@@ -2,6 +2,8 @@
 
 pub mod error;
 pub mod events;
+pub mod mcp_loader;
+pub mod mcp_proxy;
 pub mod mcp_oauth;
 pub mod oauth;
 pub mod pty;

@@ -641,6 +641,7 @@ pub async fn ensure_session_proxy(session_id: &str) {
 pub async fn run_server(addr: SocketAddr) -> anyhow::Result<()> {
     // MUST precede the provider registry construction. See `start_native_proxy`.
     start_native_proxy().await;
+    crate::mcp_loader::boot(std::env::current_dir().unwrap_or_default()).await;
 
     let state = Arc::new(ServerState::new_with_storage_for_url(format!("http://{}", addr)).await?);
 
@@ -663,6 +664,8 @@ pub async fn run_server_with_state(
     addr: SocketAddr,
     state: Arc<ServerState>,
 ) -> anyhow::Result<()> {
+    crate::mcp_loader::boot(std::env::current_dir().unwrap_or_default()).await;
+
     let app = routes::router()
         .layer(cors_layer())
         .layer(TraceLayer::new_for_http())

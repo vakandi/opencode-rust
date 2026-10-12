@@ -74,7 +74,9 @@ impl McpTransport for StdioTransport {
             McpClientError::ProtocolError(format!("Failed to serialize request: {}", e))
         })?;
 
-        let message = format!("Content-Length: {}\r\n\r\n{}", content.len(), content);
+        // MCP stdio is newline-delimited JSON. Sending LSP's `Content-Length` header made
+        // every server ignore our bytes, so the handshake never completed and boot timed out.
+        let message = format!("{}\n", content);
 
         stdin
             .write_all(message.as_bytes())
@@ -101,43 +103,42 @@ impl McpTransport for StdioTransport {
             .ok_or_else(|| McpClientError::TransportError("No stdout".to_string()))?;
 
         let mut reader = BufReader::new(stdout);
-        let mut header_line = String::new();
+        let mut line = String::new();
         loop {
-            header_line.clear();
-            let bytes_read = reader.read_line(&mut header_line).await.map_err(|e| {
-                McpClientError::TransportError(format!("Failed to read header: {}", e))
+            line.clear();
+            let bytes_read = reader.read_line(&mut line).await.map_err(|e| {
+                McpClientError::TransportError(format!("Failed to read message: {}", e))
             })?;
 
             if bytes_read == 0 {
                 return Ok(None);
             }
 
-            let trimmed = header_line.trim();
-
+            let trimmed = line.trim();
             if trimmed.is_empty() {
-                break;
+                continue;
             }
 
-            if trimmed.starts_with("Content-Length:") {
-                let content_length: usize = trimmed[15..].trim().parse().map_err(|e| {
-                    McpClientError::ProtocolError(format!("Invalid content length: {}", e))
-                })?;
-
+            // Older builds spoke LSP framing, so tolerate a Content-Length header instead of
+            // discarding the message the way the header-parsing loop did.
+            if let Some(rest) = trimmed.strip_prefix("Content-Length:") {
+                let content_length: usize = rest
+                    .trim()
+                    .parse()
+                    .map_err(|e| McpClientError::ProtocolError(format!("Invalid content length: {}", e)))?;
                 let mut content_buf = vec![0u8; content_length];
                 reader.read_exact(&mut content_buf).await.map_err(|e| {
                     McpClientError::TransportError(format!("Failed to read content: {}", e))
                 })?;
-
-                let content = String::from_utf8_lossy(&content_buf);
-                let message = JsonRpcMessage::from_str(&content).map_err(|e| {
-                    McpClientError::ProtocolError(format!("Failed to parse message: {}", e))
-                })?;
-
-                return Ok(Some(message));
+                return JsonRpcMessage::from_str(&String::from_utf8_lossy(&content_buf))
+                    .map(Some)
+                    .map_err(|e| McpClientError::ProtocolError(format!("Failed to parse message: {}", e)));
             }
-        }
 
-        Ok(None)
+            return JsonRpcMessage::from_str(trimmed)
+                .map(Some)
+                .map_err(|e| McpClientError::ProtocolError(format!("Failed to parse message: {}", e)));
+        }
     }
 
     async fn close(&self) -> Result<(), McpClientError> {

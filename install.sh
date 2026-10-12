@@ -31,28 +31,23 @@ MIN_BUN="1.3.14"
 log() { printf '[install] %s\n' "$*"; }
 die() { printf '[install] ERROR: %s\n' "$*" >&2; exit 1; }
 
+BIN_SRC="$SERVER_DIR/target/release/opencode"
+BIN_DST="$HOME/.local/bin/opr"
+STAMP="$SERVER_DIR/target/.opr-build-stamp"
+
+FORCE=0
 for arg in "$@"; do
   case "$arg" in
     -h|--help)
       sed -n '1,/^set -euo/p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
-    --docker|--no-docker)
-      die "docker is not supported in this repo (native Rust harness). Drop the flag."
-      ;;
+    --force) FORCE=1 ;;
     *) die "unknown flag: $arg (see --help)" ;;
   esac
 done
 
-command -v bun >/dev/null 2>&1 || die "bun not found — install it: curl -fsSL https://bun.sh/install | bash"
-BUN_VER="$(bun --version)"
-log "bun $BUN_VER"
-if [ "$(printf '%s\n%s\n' "$MIN_BUN" "$BUN_VER" | sort -V | head -n1)" != "$MIN_BUN" ]; then
-  die "bun >= $MIN_BUN required (found $BUN_VER) — upgrade: bun upgrade"
-fi
-
 command -v cargo >/dev/null 2>&1 || die "cargo not found — install Rust: https://rustup.rs"
-log "cargo $(cargo --version | awk '{print $2}')"
 
 command -v jq >/dev/null 2>&1 || die "jq not found — brew install jq"
 
@@ -72,20 +67,53 @@ else
   log "minted ELIA_AUTH_TOKEN into .env (mode 600)."
 fi
 
-log "installing deps in control/: $CONTROL_DIR"
-(cd "$CONTROL_DIR" && bun install)
-
-mkdir -p "$CONTROL_DIR/data" "$CONTROL_DIR/config"
+mkdir -p "$CONTROL_DIR/data" "$CONTROL_DIR/config" "$HOME/.local/bin"
 log "ensured control/data + control/config exist."
 
-log "building the Rust harness (release): server/target/release/opencode"
-(cd "$SERVER_DIR" && cargo build --release --bin opencode)
+current_stamp() {
+  {
+    find "$SERVER_DIR/crates" -name '*.rs' -type f -print0 2>/dev/null
+    printf '%s\0' "$SERVER_DIR/Cargo.toml" "$SERVER_DIR/Cargo.lock"
+  } | sort -z | xargs -0 shasum 2>/dev/null | shasum | cut -d' ' -f1
+}
 
-log "rust harness built: $(ls -1 "$SERVER_DIR"/target/release/opencode 2>/dev/null || echo '<binary not found>')"
+WANT="$(current_stamp)"
+HAVE="$(cat "$STAMP" 2>/dev/null || true)"
 
-cat <<EOF
-[install] done. Next steps:
-  1. Edit control/config/subworkers.json
-  2. Run ./start.sh
-  3. curl http://127.0.0.1:$(jq -r '.port // 5680' "$CONTROL_DIR/config/server.json" 2>/dev/null || echo 5680)/health
+if [ "$FORCE" -eq 0 ] && [ -x "$BIN_SRC" ] && [ "$WANT" = "$HAVE" ]; then
+  log "code unchanged — skipping build"
+else
+  [ "$FORCE" -eq 1 ] && log "forced rebuild"
+  log "building the Rust harness (release)"
+  (cd "$SERVER_DIR" && cargo build --release --bin opencode)
+  [ -x "$BIN_SRC" ] || die "build finished but $BIN_SRC is missing"
+  printf '%s' "$WANT" > "$STAMP"
+  log "build ok"
+fi
+
+cat > "$BIN_DST" <<EOF
+#!/usr/bin/env bash
+# opr — opencode from ${ROOT}
+case "\${1:-}" in
+  serve) shift ;;
+  run)   shift ;;
+  -v|--version|-h|--help) ;;
+  *)     set -- tui "\${@}" ;;
+esac
+exec "$SERVER_DIR/target/release/opencode" "\${@:-tui}"
 EOF
+chmod +x "$BIN_DST"
+log "installed $BIN_DST (opr: tui / serve / run)"
+
+if [ ! -L "$ROOT/config-xdg/opencode" ]; then
+  mkdir -p "$ROOT/config-xdg"
+  ln -sfn ../config-home "$ROOT/config-xdg/opencode"
+  log "linked config-xdg/opencode -> config-home"
+fi
+
+case ":$PATH:" in
+  *":$HOME/.local/bin:"*) ;;
+  *) log "note: $HOME/.local/bin is not in your PATH — add it to run opr from anywhere" ;;
+esac
+
+log "done. Try: opr"

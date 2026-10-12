@@ -489,11 +489,31 @@ pub struct ModelVariantConfig {
     pub extra: HashMap<String, serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
 pub enum McpServerConfig {
     Enabled { enabled: bool },
     Full(McpServer),
+}
+
+/// `{"enabled": …}` is a toggle; anything carrying `type`, `command` or `url` is a real
+/// definition. Serde's untagged matching tried `Enabled` first and, since a local server
+/// also has an `enabled` field, every MCP definition was swallowed by the toggle variant.
+impl<'de> Deserialize<'de> for McpServerConfig {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let value = serde_json::Value::deserialize(d)?;
+        let is_toggle = value
+            .as_object()
+            .map(|o| o.keys().all(|k| k == "enabled"))
+            .unwrap_or(false);
+        if is_toggle {
+            let enabled = value.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true);
+            return Ok(McpServerConfig::Enabled { enabled });
+        }
+        serde_json::from_value(value)
+            .map(McpServerConfig::Full)
+            .map_err(serde::de::Error::custom)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

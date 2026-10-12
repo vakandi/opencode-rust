@@ -2390,6 +2390,7 @@ dependencies = [
  "opencode-proxy",
  "opencode-session",
  "opencode-storage",
+ "opencode-tool",
  "opencode-types",
  "portable-pty",
  "serde",
