@@ -5,7 +5,7 @@
 // so the two drift the moment one is edited. This regenerates npm/README.md from the
 // root README and rewrites the one path npm cannot resolve.
 //
-// On GitHub, `./.assets/banner.png` resolves against the repo. On npmjs.com relative
+// On GitHub, `./assets/banner.png` resolves against the repo. On npmjs.com relative
 // image paths are served relative to the registry and simply 404, so they are rewritten
 // to the raw content URL. shields.io badges are already absolute and pass through.
 

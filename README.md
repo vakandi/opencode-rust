@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <img src="./.assets/banner.png" alt="OpenCode in Rust — by @vakandi" width="100%">
+  <img src="./assets/banner.png" alt="OpenCode in Rust — by @vakandi" width="100%">
 </p>
 
 <p align="center">
