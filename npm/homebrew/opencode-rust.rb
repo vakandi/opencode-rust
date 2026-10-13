@@ -10,7 +10,7 @@ class OpencodeRust < Formula
   homepage "https://github.com/vakandi/opencode-rust"
   url "https://github.com/vakandi/opencode-rust.git",
       revision: 2
-  version "0.1.3"
+  version "0.1.4"
   license "MIT"
   head "https://github.com/vakandi/opencode-rust.git", branch: "main"
 
