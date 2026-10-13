@@ -213,6 +213,72 @@ subprocess. The reverse channel already exists — `sendNotification` on the TS 
 
 ---
 
+## Proxies
+
+The engine ships a rotating residential proxy: a local HTTP/CONNECT forwarder on loopback that
+re-selects the oldest-used upstream every 120 seconds, so long agent runs do not burn through a
+single egress IP. Candidates are probe-gated — one must open a real CONNECT before it can become
+the process egress — and a rejected one is quarantined rather than retried forever.
+
+### Where the pool file goes
+
+```bash
+<data-dir>/opencode/proxy-pool.txt
+```
+
+Concretely:
+
+- **macOS** — `~/Library/Application Support/opencode/proxy-pool.txt`
+- **Linux** — `~/.local/share/opencode/proxy-pool.txt`
+- **Windows** — `%LOCALAPPDATA%\opencode\proxy-pool.txt`
+
+If `OPENCODE_PATHS_ROOT` is set, it wins over all of the above and the file is
+`$OPENCODE_PATHS_ROOT/opencode/proxy-pool.txt` — the same lever that moves the database and
+credentials. Resolve the exact path at runtime with:
+
+```bash
+opr debug paths
+```
+
+### Format
+
+One proxy per line. Blank lines are skipped, and a malformed line is logged at debug level and
+ignored rather than failing the whole pool.
+
+```text
+198.51.100.10:8080
+203.0.113.24:1080
+
+# (host:port:user:pass)
+198.51.100.31:3128:myuser:mypass
+
+# (host:port plus metadata cells)
+203.0.113.77:8000 | note:rotates hourly
+```
+
+The first two colon-separated fields are required — `host` and a `port` that parses above zero.
+Optional `user` and `pass` follow, and `pass` may itself contain colons. Anything after a
+` |` separator is metadata parsed **by key** (`last:`, `dur:`), not by position, so a line
+carrying `|dur:` without `|last:` keeps its duration.
+
+There is no comment syntax — a line beginning with `#` is simply a line that fails to parse, so
+it is dropped with a debug-level log line per occurrence. Keep the file to bare entries.
+
+### Using it
+
+Proxy setup must happen through `opencode_proxy::start()` rather than by exporting the variables
+yourself: `reqwest` snapshots the proxy environment when its client is constructed, so the export
+has to land before the provider registry is built. With an empty or unreadable pool, `start()`
+returns an error instead of binding a listener that would answer `502` for everything — you get a
+clear reason rather than a generic connection error.
+
+Sibling files live next to the pool and are managed automatically:
+
+- `proxy-quarantine.json` — candidates that failed their probe
+- `proxy-claims.json` — which session currently owns which upstream
+
+---
+
 ## Agents
 
 Built-in agents are switched with `Tab`:
