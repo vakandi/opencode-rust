@@ -1,0 +1,5 @@
+# nothing is excluded from `files` in package.json; this exists so an
+# accidental `npm publish .` from a dirty tree cannot widen the tarball.
+node_modules/
+lib/resolved.json
+*.log

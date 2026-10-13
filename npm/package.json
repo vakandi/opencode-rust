@@ -1,0 +1,53 @@
+{
+  "name": "opencode-rust",
+  "version": "0.1.0",
+  "description": "The open source AI coding agent, in Rust. CLI, TUI and HTTP server for local AI agents.",
+  "keywords": [
+    "opencode",
+    "ai",
+    "agent",
+    "coding-agent",
+    "rust",
+    "cli",
+    "tui",
+    "llm"
+  ],
+  "homepage": "https://github.com/vakandi/opencode-rust",
+  "bugs": {
+    "url": "https://github.com/vakandi/opencode-rust/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vakandi/opencode-rust.git"
+  },
+  "license": "MIT",
+  "author": "vakandi",
+  "bin": {
+    "opr": "bin/opr.js",
+    "opencode-rust": "bin/opr.js"
+  },
+  "files": [
+    "bin/opr.js",
+    "install.js",
+    "lib/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "chalk": "^4.1.2"
+  },
+  "optionalDependencies": {
+    "@opencode-rust/darwin-arm64": "0.1.0",
+    "@opencode-rust/darwin-x64": "0.1.0",
+    "@opencode-rust/linux-x64-gnu": "0.1.0",
+    "@opencode-rust/linux-x64-musl": "0.1.0",
+    "@opencode-rust/linux-arm64-gnu": "0.1.0",
+    "@opencode-rust/win32-x64-msvc": "0.1.0"
+  }
+}

@@ -4,7 +4,7 @@
     "openrouter": {
       "options": {
         "baseURL": "https://openrouter.ai/api/v1",
-        "apiKey": "sk-or-v1-REDACTED",
+        "apiKey": "sk-or-v1-REPLACE_ME",
         "headers": {
           "HTTP-Referer": "https://opencode.ai",
           "X-OpenRouter-Title": "OpenCode"
@@ -51,7 +51,7 @@
       "enabled": true,
       "environment": {
         "PLAYWRIGHT_MCP_EXTENSION": "true",
-        "PLAYWRIGHT_MCP_EXTENSION_TOKEN": "PLAYWRIGHT_MCP_EXTENSION_TOKEN_REDACTED"
+        "PLAYWRIGHT_MCP_EXTENSION_TOKEN": "REPLACE_ME"
       }
     }
   }

@@ -1,8 +1,22 @@
 # AGENTS.md — OpenCodeRust
 
-Rust port of the OpenCode engine. It is the runtime behind EliaAgent's subworker fleet.
+A standalone Rust port of the [opencode](https://github.com/anomalyco/opencode) engine
+(CLI + TUI + HTTP server). It is **not** a subworker component and has no runtime
+dependency on any agent fleet — do not reintroduce that framing from `README.md`.
+
 The CLI binary is named **`opencode`**, but the crate is `opencode-cli` — that mismatch
-breaks every command guess.
+breaks every command guess. The npm/brew entry point is **`opr`**.
+
+## Provenance and history
+
+`git log` was rewritten with `git-filter-repo` to purge three credentials that had been
+committed (an OpenRouter key, a Playwright-MCP extension token, and a Directus admin
+token). Commits before that rewrite are **not reachable from any remote** — do not try to
+restore them, and do not add a second remote pointing at the pre-rewrite history.
+
+`config-home/` is gitignored and holds a personal agent-fleet config that was never part of
+this project. `config-home.example/` is the tracked, scrubbed counterpart. The only
+`opencode.jsonc` that belongs to this repo is the one at the root.
 
 ## Commands
 
@@ -33,7 +47,8 @@ foreign one. Never delete `target/` by hand while a server or agent run is in fl
 
 ## Two SQLite schemas — do not mix them
 
-This is the highest-cost trap in the repo.
+This is the highest-cost trap in the repo. "omo" is the upstream TypeScript opencode host —
+this port interoperates with a host already running on the machine.
 
 | Who | Path | Tables |
 |---|---|---|
@@ -156,6 +171,6 @@ Verify against the code: `README.md` documents `start.sh` / `stop.sh`, which do 
 
 ## Secrets
 
-`config-home/opencode.json` is committed and contains a live OpenRouter API key and a
-Playwright-MCP extension token. Do not copy them into new files, logs, or reports, and do not
-echo that file when summarizing config.
+`config-home/` is gitignored and untracked; `config-home.example/` holds placeholder values
+only. Never commit a credential, and never `git add -f` one of the ignored patterns. The
+repo is public — anything tracked here is published.

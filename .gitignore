@@ -19,6 +19,22 @@
 .env.*
 !.env.example
 
+# Personal agent-fleet config — NEVER published.
+# Holds live OpenRouter / Playwright-MCP keys and Directus admin tokens.
+# Only `config-home.example/` is tracked.
+/config-home/
+
+# Belt-and-braces: catch a credential dropped into a tracked path.
+# A false positive costs one `git add -f`; a false negative costs a permanent public leak.
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+.npmrc
+credentials.json
+
 # Logs
 *.log
 
