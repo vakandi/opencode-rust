@@ -23,25 +23,27 @@ class OpencodeRust < Formula
   def install
     system "cargo", "install", "--path", ".", "--bin", "opencode",
            "--root", staging_dir/"cargo-install", "--locked"
-    bin.install Dir[staging_dir/"cargo-install"/"bin"/"opencode"]
-    # `opr` is a plain symlink here, unlike the npm package where it has to be a
-    # dispatching script. That is why `opr --flag` behaves differently between the two
-    # installs: through npm it becomes `opencode tui --flag`, through brew it becomes
-    # `opencode --flag` and is rejected. Give people the `tui` subcommand explicitly.
-    ln_sf bin/"opencode", bin/"opr"
+    # Install the built binary as `opr` and nothing else. The crate still names its
+    # binary `opencode`, but `opencode` belongs to the upstream CLI
+    # (https://github.com/anomalyco/opencode) — writing that name into Homebrew's bin
+    # directory silently shadows a user's real opencode installation and breaks every
+    # other formula that depends on it. Renaming on install keeps this formula inert
+    # with respect to the upstream tool.
+    bin.install staging_dir/"cargo-install"/"bin"/"opencode" => "opr"
   end
 
   def caveats
     <<~EOS
-      Installed: opencode, plus an `opr` alias for the same binary.
+      Installed as `opr`. This formula does not install a binary named `opencode`, so
+      it cannot shadow the upstream opencode CLI.
 
         opr                      # interactive TUI
         opr run "your task"      # one prompt, runs to completion
         opr serve --port 3000
 
-      Unlike the npm install, `opr` here is a symlink, not a dispatcher. Passing a
-      global flag (`opr --some-flag`) forwards it to opencode unchanged and will be
-      rejected. Name the subcommand instead: `opr tui --some-flag`.
+      `opr` here is the binary itself, not the npm package's dispatching script. A
+      global flag (`opr --some-flag`) is forwarded unchanged and will be rejected by
+      the CLI — name the subcommand instead: `opr tui --some-flag`.
 
       First run needs a provider key, e.g. `export ANTHROPIC_API_KEY=...`.
       Configuration lives in ~/.config/opencode/opencode.json
@@ -49,6 +51,8 @@ class OpencodeRust < Formula
   end
 
   test do
-    assert_match "OpenCode", shell_output("#{bin}/opencode version")
+    assert_match "OpenCode", shell_output("#{bin}/opr version")
+    # Guards the rename above: if anyone re-adds an `opencode` binary, this fails.
+    refute_path_exists bin/"opencode"
   end
 end
