@@ -5,6 +5,10 @@
 </p>
 
 <p align="center">
+  <img src="./.assets/banner.png" alt="OpenCode in Rust — by @vakandi" width="100%">
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/core-Rust-DEA584?style=flat-square&logo=rust&logoColor=white" alt="Rust">
   <img src="https://img.shields.io/badge/crates-21-informational?style=flat-square" alt="21 crates">
   <img src="https://img.shields.io/badge/tests-571_passing-success?style=flat-square" alt="571 tests">
