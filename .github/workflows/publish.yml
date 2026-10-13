@@ -1,0 +1,53 @@
+name: Publish to npm
+
+# Trusted publishing: npm's GitHub OIDC handshake replaces the long-lived token and the
+# per-publish 2FA code. The workflow below authenticates with a short-lived JWT, so
+# there is no secret in this repo and nothing to rotate.
+#
+# Trusted publishing must be configured once per package on npmjs.com
+# (package -> Settings -> Trusted Publisher), pointing at vakandi/opencode-rust and this
+# file's name. This workflow only works after that is done.
+#
+# Platform order matters: @opencode-rust/* declare opencode-rust as an optional
+# dependency, and npm resolves it from the registry, so the binary package has to be
+# public before the launcher package is useful.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # required for the npm OIDC exchange
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Publish the native binary
+        id: binary
+        working-directory: npm/platform/darwin-arm64
+        run: npm publish --provenance --access public
+
+      - name: Publish the launcher
+        working-directory: npm
+        run: npm publish --provenance --access public
+
+      - name: Publish the opencoderust alias
+        working-directory: npm/alias/opencoderust
+        run: npm publish --provenance --access public
+
+      - name: Confirm all three are on the registry
+        run: |
+          for p in "@opencode-rust/darwin-arm64@0.1.0" "opencode-rust@0.1.0" "opencoderust@0.1.0"; do
+            printf '%s -> ' "$p"
+            npm view "$p" version
+          done
