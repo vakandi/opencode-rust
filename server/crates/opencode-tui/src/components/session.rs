@@ -249,6 +249,7 @@ impl SessionView {
             self.render_session_footer(frame, layout[2]);
         }
         if show_prompt && layout[3].height > 0 {
+            *self.context.prompt_area.write() = Some(layout[3]);
             prompt.render(frame, layout[3]);
         }
     }
@@ -758,6 +759,7 @@ impl SessionView {
                                         state,
                                         &tool_results,
                                         show_tool_details,
+                                        content_width,
                                         &theme,
                                     );
                                     append_message_lines(
@@ -843,8 +845,47 @@ impl SessionView {
                             ),
                         );
                     }
+
+                    if let Some(error_text) = msg
+                        .error
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        let mut error_lines = vec![Line::from(Span::styled(
+                            "Error",
+                            Style::default()
+                                .fg(theme.error)
+                                .add_modifier(Modifier::BOLD),
+                        ))];
+                        error_lines.extend(
+                            error_text
+                                .lines()
+                                .map(|line_text| {
+                                    Line::from(Span::styled(
+                                        line_text.to_string(),
+                                        Style::default().fg(theme.error),
+                                    ))
+                                })
+                                .collect::<Vec<_>>(),
+                        );
+                        append_message_lines(
+                            &mut lines,
+                            &mut line_to_message,
+                            &msg.id,
+                            paint_block_lines(
+                                error_lines,
+                                message_bg,
+                                theme.error,
+                                content_width,
+                            ),
+                        );
+                    }
+
                 }
                 MessageRole::System => {
+                    let message_bg = theme.background_panel;
+                    let message_border = theme.border;
                     let system_lines: Vec<Line<'static>> = msg
                         .content
                         .lines()
@@ -855,7 +896,18 @@ impl SessionView {
                             ))
                         })
                         .collect();
-                    append_message_lines(&mut lines, &mut line_to_message, &msg.id, system_lines);
+                    let painted_system_lines = paint_block_lines(
+                        system_lines,
+                        message_bg,
+                        message_border,
+                        content_width,
+                    );
+                    append_message_lines(
+                        &mut lines,
+                        &mut line_to_message,
+                        &msg.id,
+                        painted_system_lines,
+                    );
                 }
             }
         }

@@ -4515,6 +4515,8 @@ struct AgentInfo {
     id: String,
     name: String,
     description: Option<String>,
+    model: Option<String>,
+    model_preference: Option<String>,
 }
 
 async fn list_agents() -> Result<Json<Vec<AgentInfo>>> {
@@ -4524,6 +4526,10 @@ async fn list_agents() -> Result<Json<Vec<AgentInfo>>> {
 
     if let (Some(loader), Some(config)) = (get_plugin_loader(), config.as_mut()) {
         apply_plugin_config_hooks(loader, config).await;
+        // The hook rewrote the config from the plugin's own defaults, so the
+        // user's omo.jsonc models are merged again to take precedence over them.
+        let mut paths = Vec::new();
+        opencode_config::apply_omo_agent_config(config, &mut paths);
     }
 
     let registry = AgentRegistry::from_optional_config(config.as_ref());
@@ -4537,6 +4543,13 @@ async fn list_agents() -> Result<Json<Vec<AgentInfo>>> {
             id: agent.name.clone(),
             name: agent.name.clone(),
             description: agent.description.clone(),
+            model: agent
+                .model
+                .as_ref()
+                .map(|model| format!("{}/{}", model.provider_id, model.model_id)),
+            model_preference: agent.model_preference.as_ref().map(|model| {
+                format!("{}/{}", model.provider_id, model.model_id)
+            }),
         })
         .collect();
     Ok(Json(agents))

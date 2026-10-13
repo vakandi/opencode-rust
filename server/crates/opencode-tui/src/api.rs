@@ -273,6 +273,10 @@ pub struct AgentInfo {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub model_preference: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

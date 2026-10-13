@@ -71,6 +71,8 @@ impl ConfigLoader {
             }
         }
 
+        self.load_omo_agent_config();
+
         if let Some(global_config_dir) = global_config_path.parent() {
             if let Some(migrated_path) =
                 migrate_legacy_toml_config(global_config_dir, &mut self.config)
@@ -82,6 +84,16 @@ impl ConfigLoader {
         }
 
         Ok(())
+    }
+
+    /// Merge agent definitions from the oh-my-openagent config.
+    ///
+    /// oh-my-opencode keeps its agents in `~/.omo/omo.jsonc` (and
+    /// `~/.config/omo/omo.jsonc`), not in the opencode config. Without this the
+    /// agents it owns fall back to built-in defaults, so a model chosen in that
+    /// file never reaches the TUI.
+    fn load_omo_agent_config(&mut self) {
+        apply_omo_agent_config(&mut self.config, &mut self.config_paths);
     }
 
     pub fn load_project<P: AsRef<Path>>(&mut self, project_dir: P) -> Result<()> {
@@ -1373,6 +1385,79 @@ fn apply_post_load_transforms(config: &mut Config) {
 }
 
 /// Loads config synchronously (without remote wellknown fetching).
+/// Canonical slug for an agent entry key.
+///
+/// Plugins register agents under display names such as `Atlas - Plan Executor`
+/// while config files key them by slug (`atlas`), so an exact-key lookup misses
+/// and the configured model never lands on the agent.
+pub fn agent_slug(name: &str) -> String {
+    name.split(" - ")
+        .next()
+        .unwrap_or(name)
+        .trim()
+        .to_ascii_lowercase()
+}
+
+/// Merge agent definitions from the oh-my-openagent config into `config`.
+///
+/// oh-my-opencode keeps its agents in `~/.omo/omo.jsonc` (and
+/// `~/.config/omo/omo.jsonc`), not in the opencode config. A plugin `config`
+/// hook replaces the whole config, so this is also called after plugin hooks
+/// run: an explicit user model must outrank a plugin's built-in default.
+pub fn apply_omo_agent_config(config: &mut Config, config_paths: &mut Vec<PathBuf>) {
+    let Some(home) = dirs::home_dir() else {
+        return;
+    };
+
+    let candidates = [
+        home.join(".omo").join("omo.jsonc"),
+        home.join(".config").join("omo").join("omo.jsonc"),
+    ];
+
+    for path in candidates {
+        if !path.exists() {
+            continue;
+        }
+        let Ok(contents) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let parse_options = ParseOptions {
+            allow_trailing_commas: true,
+            ..Default::default()
+        };
+        let Ok(Some(raw)) = parse_to_serde_value(&contents, &parse_options) else {
+            continue;
+        };
+        // omo.jsonc spells the key `agents`; the opencode Config field is `agent`.
+        let Some(agents) = raw
+            .get("agents")
+            .and_then(|value| serde_json::from_value::<AgentConfigs>(value.clone()).ok())
+        else {
+            continue;
+        };
+        if agents.entries.is_empty() {
+            continue;
+        }
+
+let mut existing = config.agent.take().unwrap_or_default();
+            for (name, agent) in agents.entries {
+                let matched = existing
+                    .entries
+                    .iter_mut()
+                    .find(|(key, _)| agent_slug(key) == agent_slug(&name))
+                    .map(|(_, current)| current);
+                match matched {
+                    Some(current) => merge_agent_config(current, agent),
+                    None => {
+                        existing.entries.insert(name, agent);
+                    }
+                }
+            }
+            config.agent = Some(existing);
+            config_paths.push(path);
+    }
+}
+
 pub fn load_config<P: AsRef<Path>>(project_dir: P) -> Result<Config> {
     let mut loader = ConfigLoader::new();
     loader.load_all(project_dir)
@@ -1448,6 +1533,47 @@ mod tests {
 
     struct TestDir {
         path: PathBuf,
+    }
+
+    #[test]
+    fn omo_agent_models_are_merged_from_the_home_omo_config() {
+        let home = TestDir::new("omo_home");
+        let omo_dir = home.path.join(".omo");
+        fs::create_dir_all(&omo_dir).expect("create .omo");
+        fs::write(
+            omo_dir.join("omo.jsonc"),
+            r#"{
+              // agents live here, not in opencode.json
+              "agents": {
+                "atlas": { "model": "opencode/space-bunny-free" },
+                "oracle": { "model": "opencode/space-bunny-free" }
+              }
+            }"#,
+        )
+        .expect("write omo.jsonc");
+
+        let previous = std::env::var("HOME").ok();
+        unsafe { std::env::set_var("HOME", &home.path) };
+        let config = load_config(".");
+        unsafe {
+            match previous {
+                Some(value) => std::env::set_var("HOME", value),
+                None => std::env::remove_var("HOME"),
+            }
+        }
+
+        let config = config.expect("load config");
+        let agents = config.agent.expect("agent section");
+        assert_eq!(
+            agents.entries.get("atlas").and_then(|a| a.model.as_deref()),
+            Some("opencode/space-bunny-free"),
+            "atlas must take its model from ~/.omo/omo.jsonc"
+        );
+        assert_eq!(
+            agents.entries.get("oracle").and_then(|a| a.model.as_deref()),
+            Some("opencode/space-bunny-free"),
+            "oracle must take its model from ~/.omo/omo.jsonc"
+        );
     }
 
     impl TestDir {

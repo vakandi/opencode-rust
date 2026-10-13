@@ -27,6 +27,7 @@ pub enum CustomEvent {
 pub enum StateChange {
     SessionCreated(String),
     SessionUpdated(String),
+    TranscriptAppended(String),
     SessionStatusBusy(String),
     SessionStatusIdle(String),
     SessionStatusRetrying {

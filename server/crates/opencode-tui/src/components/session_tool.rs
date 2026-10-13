@@ -5,6 +5,7 @@ use ratatui::{
     text::{Line, Span},
 };
 use serde_json::Value;
+use unicode_width::UnicodeWidthStr;
 
 use crate::theme::Theme;
 
@@ -18,6 +19,10 @@ pub enum ToolState {
 
 /// Threshold: tool results longer than this are "block" tools with expandable output
 const BLOCK_RESULT_THRESHOLD: usize = 3;
+
+/// Columns consumed by the glyph, the state icon and the space between them, so
+/// preview text is truncated against the space it will actually occupy.
+const TOOL_PREVIEW_INDENT: usize = 4;
 
 /// Map tool name to a semantic glyph
 pub fn tool_glyph(name: &str) -> &'static str {
@@ -62,11 +67,14 @@ pub fn render_tool_call(
     state: ToolState,
     tool_results: &HashMap<String, (String, bool)>,
     show_tool_details: bool,
+    width: usize,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
     if matches!(state, ToolState::Completed) && !show_tool_details {
         return Vec::new();
     }
+
+    let preview_width = width.saturating_sub(TOOL_PREVIEW_INDENT).max(8);
 
     let result = tool_results.get(id);
     let block_mode = is_block_tool(name, result);
@@ -89,9 +97,22 @@ pub fn render_tool_call(
             Span::styled(name.to_string(), name_style.bg(bg)),
         ];
 
-        if let Some(argument_preview) = tool_argument_preview(&normalized, arguments) {
+        if let Some(argument_preview) =
+            tool_argument_preview(&normalized, arguments, preview_width)
+        {
+            let used = 2
+                + state_icon.width()
+                + glyph.width()
+                + UnicodeWidthStr::width(name)
+                + TOOL_PREVIEW_INDENT;
             main_spans.push(Span::styled(
-                format!("  {}", argument_preview),
+                format!(
+                    "  {}",
+                    format_preview_line(
+                        &argument_preview,
+                        width.saturating_sub(used).max(8)
+                    )
+                ),
                 Style::default().fg(theme.text_muted).bg(bg),
             ));
         }
@@ -113,20 +134,22 @@ pub fn render_tool_call(
                 let mut iter = result_text.lines();
                 if let Some(first_line) = iter.next() {
                     lines.push(block_content_line(
-                        format!("Error: {}", format_preview_line(first_line, 96)),
+                        format!("Error: {}", format_preview_line(first_line, preview_width)),
                         Style::default().fg(theme.error),
                         theme,
                         bg,
+                        preview_width,
                     ));
                 }
 
                 if show_tool_details {
                     for line in iter.take(2) {
                         lines.push(block_content_line(
-                            format_preview_line(line, 96),
+                            format_preview_line(line, preview_width),
                             Style::default().fg(theme.error),
                             theme,
                             bg,
+                            preview_width,
                         ));
                     }
                 }
@@ -144,14 +167,16 @@ pub fn render_tool_call(
                     Style::default().fg(theme.text_muted),
                     theme,
                     bg,
+                    preview_width,
                 ));
 
                 for line in output_lines.iter().take(preview_limit) {
                     lines.push(block_content_line(
-                        format_preview_line(line, 96),
+                        format_preview_line(line, preview_width),
                         Style::default().fg(theme.text),
                         theme,
                         bg,
+                        preview_width,
                     ));
                 }
 
@@ -161,6 +186,7 @@ pub fn render_tool_call(
                         Style::default().fg(theme.text_muted),
                         theme,
                         bg,
+                        preview_width,
                     ));
                 }
             }
@@ -170,6 +196,11 @@ pub fn render_tool_call(
     }
 
     // Inline mode
+    let inline_used = 2
+        + state_icon.width()
+        + glyph.width()
+        + UnicodeWidthStr::width(name);
+    let summary_budget = width.saturating_sub(inline_used + TOOL_PREVIEW_INDENT);
     let mut main_spans = vec![
         Span::styled(format!("{} ", state_icon), icon_style),
         Span::styled(format!("{} ", glyph), Style::default().fg(theme.tool_icon)),
@@ -181,7 +212,10 @@ pub fn render_tool_call(
         if *is_error {
             let first_line = result_text.lines().next().unwrap_or(result_text).trim();
             main_spans.push(Span::styled(
-                format!(" — {}", format_preview_line(first_line, 96)),
+                format!(
+                    " — {}",
+                    format_preview_line(first_line, summary_budget.max(8))
+                ),
                 Style::default().fg(theme.error),
             ));
             if is_denied {
@@ -209,7 +243,9 @@ pub fn render_tool_call(
     lines.push(Line::from(main_spans));
 
     if show_tool_details {
-        if let Some(argument_preview) = tool_argument_preview(&normalized, arguments) {
+        if let Some(argument_preview) =
+            tool_argument_preview(&normalized, arguments, preview_width)
+        {
             lines.push(Line::from(Span::styled(
                 format!("    {}", argument_preview),
                 Style::default().fg(theme.text_muted),
@@ -232,10 +268,17 @@ fn block_content_line(
     style: Style,
     theme: &Theme,
     background: ratatui::style::Color,
+    width: usize,
 ) -> Line<'static> {
     Line::from(vec![
         block_prefix(theme, background),
-        Span::styled(format!("  {}", content.into()), style.bg(background)),
+        Span::styled(
+            format!(
+                "  {}",
+                format_preview_line(&content.into(), width.saturating_sub(TOOL_PREVIEW_INDENT))
+            ),
+            style.bg(background),
+        ),
     ])
 }
 
@@ -282,7 +325,11 @@ fn normalize_tool_name(name: &str) -> String {
     name.trim().to_ascii_lowercase().replace('-', "_")
 }
 
-fn tool_argument_preview(normalized_name: &str, arguments: &str) -> Option<String> {
+fn tool_argument_preview(
+    normalized_name: &str,
+    arguments: &str,
+    width: usize,
+) -> Option<String> {
     let raw = arguments.trim();
     let parsed = serde_json::from_str::<Value>(raw).ok();
 
@@ -296,7 +343,7 @@ fn tool_argument_preview(normalized_name: &str, arguments: &str) -> Option<Strin
 
     if matches!(normalized_name, "read" | "readfile" | "read_file") {
         if let Some(path) = parsed.as_ref().and_then(extract_path) {
-            return Some(format!("→ {}", path));
+            return Some(format_preview_line(&format!("→ {}", path), width));
         }
     }
 
@@ -305,7 +352,7 @@ fn tool_argument_preview(normalized_name: &str, arguments: &str) -> Option<Strin
         "write" | "writefile" | "write_file" | "edit" | "editfile" | "edit_file"
     ) {
         if let Some(path) = parsed.as_ref().and_then(extract_path) {
-            return Some(format!("← {}", path));
+            return Some(format_preview_line(&format!("← {}", path), width));
         }
     }
 
@@ -317,7 +364,7 @@ fn tool_argument_preview(normalized_name: &str, arguments: &str) -> Option<Strin
     if first.is_empty() {
         None
     } else {
-        Some(format_preview_line(first, 84))
+        Some(format_preview_line(first, width))
     }
 }
 
@@ -371,4 +418,72 @@ fn format_preview_line(line: &str, max_chars: usize) -> String {
     }
     let truncated: String = trimmed.chars().take(max_chars.saturating_sub(1)).collect();
     format!("{}…", truncated)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use unicode_width::UnicodeWidthStr;
+
+    fn widest(lines: &[Line<'static>]) -> usize {
+        lines
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| UnicodeWidthStr::width(span.content.as_ref()))
+                    .sum::<usize>()
+            })
+            .max()
+            .unwrap_or(0)
+    }
+
+    fn render(width: usize, arguments: &str, result: &str, is_error: bool) -> Vec<Line<'static>> {
+        let theme = Theme::default();
+        let mut results = HashMap::new();
+        results.insert("call_1".to_string(), (result.to_string(), is_error));
+        render_tool_call(
+            "call_1",
+            "bash",
+            arguments,
+            ToolState::Completed,
+            &results,
+            true,
+            width,
+            &theme,
+        )
+    }
+
+    #[test]
+    fn tool_call_lines_never_exceed_the_width_they_were_given() {
+        let width = 60;
+        let lines = render(
+            width,
+            &format!("{{\"command\":\"{}\"}}", "rm -rf /tmp/scratch && ".repeat(10)),
+            &format!("MARKA {}", "tail ".repeat(100)),
+            true,
+        );
+
+        assert!(
+            !lines.is_empty(),
+            "a failed tool call should still render something"
+        );
+        assert!(
+            widest(&lines) <= width,
+            "tool call content must fit the width it was given ({width}), widest line was {}",
+            widest(&lines)
+        );
+    }
+
+    #[test]
+    fn tool_call_width_scales_with_the_terminal() {
+        for width in [40usize, 80, 120] {
+            let lines = render(width, "{}", &"x".repeat(500), true);
+            assert!(
+                widest(&lines) <= width,
+                "at width {width} the widest line was {}",
+                widest(&lines)
+            );
+        }
+    }
 }

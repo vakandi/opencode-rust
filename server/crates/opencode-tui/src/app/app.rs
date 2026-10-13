@@ -27,7 +27,7 @@ use crate::components::{
 use crate::context::keybind::LeaderKeyState;
 use crate::context::{
     AppContext, McpConnectionStatus, McpServerStatus, Message, MessagePart as ContextMessagePart,
-    MessageRole, RevertInfo, Session, SessionStatus, TokenUsage,
+    MessageRole, RevertInfo, Session, SessionContext, SessionStatus, TokenUsage,
 };
 use crate::event::{CustomEvent, Event, StateChange};
 use crate::router::Route;
@@ -36,6 +36,7 @@ use crate::ui::{Clipboard, Selection};
 // TS parity: renderer targetFps is 60, ~16ms frame budget.
 const TICK_RATE_MS: u64 = 16;
 const MAX_EVENTS_PER_FRAME: usize = 256;
+const DEFAULT_AGENT: &str = "gilfoyle";
 
 pub struct App {
     context: Arc<AppContext>,
@@ -73,6 +74,7 @@ pub struct App {
     /// Snapshot of rendered screen lines for text selection copy.
     screen_lines: Vec<String>,
     available_models: HashSet<String>,
+    agent_models: HashMap<String, String>,
     model_variants: HashMap<String, Vec<String>>,
     model_variant_selection: HashMap<String, Option<String>>,
     pending_initial_submit: bool,
@@ -108,6 +110,13 @@ impl App {
         self.terminal.is_some()
     }
 
+    /// Shared context handle, so a headless test can seed session state that is
+    /// otherwise only reachable through the live server event stream.
+    #[doc(hidden)]
+    pub fn context(&self) -> Arc<AppContext> {
+        self.context.clone()
+    }
+
     /// Switch the rendered route. Lets a headless test drive the Session view,
     /// which is the only route that paints the sidebar.
     pub fn navigate(&mut self, route: Route) {
@@ -139,6 +148,8 @@ impl App {
             if !agent.is_empty() {
                 context.set_agent(agent.to_string());
             }
+        } else {
+            context.set_agent(DEFAULT_AGENT.to_string());
         }
         if let Ok(model) = std::env::var("OPENCODE_TUI_MODEL") {
             let model = model.trim();
@@ -248,6 +259,7 @@ impl App {
             toast: Toast::new(),
             screen_lines: Vec::new(),
             available_models: HashSet::new(),
+            agent_models: HashMap::new(),
             model_variants: HashMap::new(),
             model_variant_selection: HashMap::new(),
             pending_initial_submit,
@@ -730,6 +742,12 @@ impl App {
                     }
                     self.sync_prompt_spinner_state();
                 }
+                CustomEvent::StateChanged(StateChange::TranscriptAppended(_session_id)) => {
+                    // The transcript was already mutated in place from the SSE delta, so
+                    // re-fetching the whole session here would overwrite it with a
+                    // snapshot taken before the delta landed.
+                    self.sync_prompt_spinner_state();
+                }
                 CustomEvent::StateChanged(StateChange::SessionStatusBusy(session_id)) => {
                     self.set_session_status(session_id, SessionStatus::Running);
                     self.sync_prompt_spinner_state();
@@ -817,7 +835,6 @@ impl App {
             || self.session_export_dialog.is_open()
             || self.prompt_stash_dialog.is_open()
             || self.skill_list_dialog.is_open()
-            || self.slash_popup.is_open()
             || self.command_palette.is_open()
             || self.model_select.is_open()
             || self.agent_select.is_open()
@@ -1340,8 +1357,9 @@ impl App {
                 KeyCode::Up => self.agent_select.move_up(),
                 KeyCode::Down => self.agent_select.move_down(),
                 KeyCode::Enter => {
-                    if let Some(agent) = self.agent_select.selected_agent() {
+                    if let Some(agent) = self.agent_select.selected_agent().cloned() {
                         self.context.set_agent(agent.name.clone());
+                        self.apply_agent_model(&agent.name);
                     }
                     self.agent_select.close();
                 }
@@ -2332,6 +2350,7 @@ impl App {
                 self.set_session_status(&session.id, SessionStatus::Running);
                 self.prompt.set_spinner_task_kind(TaskKind::LlmRequest);
                 self.prompt.set_spinner_active(true);
+                self.pending_session_sync = Some(session.id.clone());
             }
             Route::Session { session_id } => {
                 // Optimistic: show user message immediately before network call
@@ -2363,6 +2382,7 @@ impl App {
                     self.alert_dialog.open();
                     return Ok(());
                 }
+                self.pending_session_sync = Some(session_id.clone());
             }
             _ => {}
         }
@@ -2562,11 +2582,15 @@ impl App {
 
         let theme = self.context.theme.read().clone();
         let mut agent_names = Vec::new();
+        let mut agent_models = HashMap::new();
         let mapped = agents
             .into_iter()
             .enumerate()
             .map(|(idx, agent)| {
                 agent_names.push(agent.id.clone());
+                if let Some(model) = agent.model.clone().or(agent.model_preference.clone()) {
+                    agent_models.insert(opencode_config::agent_slug(&agent.id), model);
+                }
                 Agent {
                     name: agent.id,
                     description: agent
@@ -2577,14 +2601,60 @@ impl App {
             })
             .collect::<Vec<_>>();
         self.agent_select.set_agents(mapped);
+        if !agent_models.is_empty() {
+            self.agent_models = agent_models;
+        }
         let current = self.context.current_agent.read().clone();
-        if !agent_names.iter().any(|name| name == &current) {
+        let known = agent_names.iter().any(|name| {
+            opencode_config::agent_slug(name) == opencode_config::agent_slug(&current)
+        });
+        if !known {
             if let Some(first) = agent_names.first() {
                 self.context.set_agent(first.clone());
                 self.sync_prompt_spinner_style();
             }
         }
+        let active = self.context.current_agent.read().clone();
+        self.apply_agent_model(&active);
         self.prompt.set_agent_suggestions(agent_names);
+    }
+
+    fn apply_agent_model(&mut self, agent: &str) {
+        let slug = opencode_config::agent_slug(agent);
+        let Some(model) = self
+            .agent_models
+            .iter()
+            .find(|(name, _)| opencode_config::agent_slug(name) == slug)
+            .map(|(_, model)| model.clone())
+        else {
+            return;
+        };
+        let (provider, model_id) = match model.split_once('/') {
+            Some((provider, id)) => (provider.to_string(), id.to_string()),
+            None => (model.clone(), model.clone()),
+        };
+        let known = self.available_models.contains(&model);
+        if known {
+            self.set_active_model_selection(model, Some(provider));
+        } else if !self.available_models.is_empty() {
+            let fallback = self
+                .available_models
+                .iter()
+                .find(|candidate| candidate.ends_with(&model_id))
+                .cloned();
+            match fallback {
+                Some(available) => {
+                    let provider_id = available
+                        .split_once('/')
+                        .map(|(p, _)| p.to_string())
+                        .unwrap_or_else(|| provider.clone());
+                    self.set_active_model_selection(available, Some(provider_id));
+                }
+                None => self.set_active_model_selection(model, Some(provider)),
+            }
+        } else {
+            self.set_active_model_selection(model, Some(provider));
+        }
     }
 
     fn cycle_agent(&mut self, direction: i8) {
@@ -2611,7 +2681,8 @@ impl App {
         };
         let next_agent = agents[next_index].name.clone();
 
-        self.context.set_agent(next_agent);
+        self.context.set_agent(next_agent.clone());
+        self.apply_agent_model(&next_agent);
         self.sync_prompt_spinner_style();
     }
 
@@ -3110,6 +3181,7 @@ impl App {
         } else {
             session_ctx.revert.remove(session_id);
         }
+        flush_pending_deltas(&mut session_ctx, session_id);
         drop(session_ctx);
 
         Ok(())
@@ -3284,6 +3356,7 @@ impl App {
             return;
         }
 
+        *context.prompt_area.write() = None;
         match route_for_draw {
             Route::Home => {
                 let home = HomeView::new(context.clone());
@@ -3309,7 +3382,7 @@ impl App {
             frame.render_widget(modal_backdrop, area);
         }
 
-        slash_popup.render(frame, area, &theme);
+        slash_popup.render(frame, area, *context.prompt_area.read(), &theme);
         command_palette.render(frame, area, &theme);
         model_select.render(frame, area, &theme);
         agent_select.render(frame, area, &theme);
@@ -4051,10 +4124,21 @@ fn forward_server_event(
                 return;
             };
 
-            if apply_part_delta_to_context(context, session_id, message_id, delta) {
-                let _ = event_tx.send(Event::Custom(CustomEvent::StateChanged(
-                    StateChange::SessionUpdated(session_id.to_string()),
-                )));
+            match apply_part_delta_to_context(context, session_id, message_id, delta) {
+                DeltaOutcome::Applied => {
+                    let _ = event_tx.send(Event::Custom(CustomEvent::StateChanged(
+                        StateChange::TranscriptAppended(session_id.to_string()),
+                    )));
+                }
+                // The message is not in the local transcript yet, so the delta is
+                // held back. A sync is still needed to create the message, after
+                // which the buffer is replayed.
+                DeltaOutcome::Buffered => {
+                    let _ = event_tx.send(Event::Custom(CustomEvent::StateChanged(
+                        StateChange::SessionUpdated(session_id.to_string()),
+                    )));
+                }
+                DeltaOutcome::Dropped => {}
             }
         }
         Some("message.part.updated") | Some("message.updated") => {
@@ -4069,17 +4153,57 @@ fn forward_server_event(
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DeltaOutcome {
+    Applied,
+    Buffered,
+    Dropped,
+}
+
 fn apply_part_delta_to_context(
     context: &Arc<AppContext>,
     session_id: &str,
     message_id: &str,
     delta: &str,
-) -> bool {
+) -> DeltaOutcome {
+    if delta.is_empty() {
+        return DeltaOutcome::Dropped;
+    }
+
     let mut session_ctx = context.session.write();
     let Some(messages) = session_ctx.messages.get_mut(session_id) else {
-        return false;
+        return DeltaOutcome::Dropped;
     };
-    apply_part_delta(messages, message_id, delta)
+
+    if apply_part_delta(messages, message_id, delta) {
+        return DeltaOutcome::Applied;
+    }
+
+    session_ctx
+        .pending_deltas
+        .entry((session_id.to_string(), message_id.to_string()))
+        .and_modify(|buffered| buffered.push_str(delta))
+        .or_insert_with(|| delta.to_string());
+    DeltaOutcome::Buffered
+}
+
+fn flush_pending_deltas(session_ctx: &mut SessionContext, session_id: &str) {
+    let buffered: Vec<(String, String)> = session_ctx
+        .pending_deltas
+        .keys()
+        .filter(|(sid, _)| sid == session_id)
+        .cloned()
+        .collect();
+
+    for (sid, message_id) in buffered {
+        let key = (sid, message_id);
+        let Some(delta) = session_ctx.pending_deltas.remove(&key) else {
+            continue;
+        };
+        if let Some(messages) = session_ctx.messages.get_mut(session_id) {
+            apply_part_delta(messages, &key.1, &delta);
+        }
+    }
 }
 
 fn apply_part_delta(messages: &mut Vec<Message>, message_id: &str, delta: &str) -> bool {
@@ -4264,15 +4388,22 @@ mod throttling_tests {
 
         forward_server_event(&[payload], &tx, &context);
 
-        let mut saw_status = false;
+        let mut saw_event = false;
         while let Ok(event) = rx.try_recv() {
-            if let Event::Custom(CustomEvent::StateChanged(StateChange::SessionUpdated(s))) = event
-            {
-                assert_eq!(s, "ses_a", "sessionID must be lifted out of properties");
-                saw_status = true;
+            if let Event::Custom(CustomEvent::StateChanged(change)) = event {
+                match change {
+                    StateChange::TranscriptAppended(s) => {
+                        assert_eq!(s, "ses_a", "sessionID must be lifted out of properties");
+                        saw_event = true;
+                    }
+                    StateChange::SessionUpdated(s) => {
+                        panic!("a delta applied in place must not request a session re-sync: {s}");
+                    }
+                    _ => {}
+                }
             }
         }
-        assert!(saw_status, "no SessionUpdated emitted for the delta");
+        assert!(saw_event, "no redraw event emitted for the delta");
 
         let content = context.session.read().messages["ses_a"][0].content.clone();
         assert_eq!(
@@ -4419,6 +4550,74 @@ mod throttling_tests {
             after_attempt.elapsed()
         ));
     }
+
+    #[test]
+    fn a_delta_for_an_unknown_message_is_buffered_and_replayed_not_dropped() {
+        let (tx, rx) = std::sync::mpsc::channel::<Event>();
+        let context = Arc::new(AppContext::new());
+        context.session.write().set_messages("ses_a", Vec::new());
+
+        let mut event = |delta: &str| {
+            let payload = serde_json::json!({
+                "id": "evt_1",
+                "type": "message.part.delta",
+                "properties": {
+                    "sessionID": "ses_a",
+                    "messageID": "msg_late",
+                    "partID": "prt_1",
+                    "field": "text",
+                    "delta": delta,
+                }
+            })
+            .to_string();
+            forward_server_event(&[payload], &tx, &context);
+        };
+
+        event("Hello");
+        event(", world");
+
+        assert!(
+            context.session.read().pending_deltas.contains_key(&(
+                "ses_a".to_string(),
+                "msg_late".to_string()
+            )),
+            "a delta for a message that does not exist yet must be buffered, not discarded"
+        );
+
+        {
+            let mut session_ctx = context.session.write();
+            session_ctx.set_messages(
+                "ses_a",
+                vec![Message {
+                    id: "msg_late".to_string(),
+                    role: MessageRole::Assistant,
+                    content: String::new(),
+                    created_at: chrono::Utc::now(),
+                    agent: None,
+                    model: None,
+                    mode: None,
+                    finish: None,
+                    error: None,
+                    completed_at: None,
+                    cost: 0.0,
+                    tokens: TokenUsage::default(),
+                    parts: vec![],
+                }],
+            );
+            flush_pending_deltas(&mut session_ctx, "ses_a");
+        }
+
+        let session_ctx = context.session.read();
+        assert!(
+            session_ctx.pending_deltas.is_empty(),
+            "the buffer must be drained once the message exists"
+        );
+        assert_eq!(
+            session_ctx.messages["ses_a"][0].content, "Hello, world",
+            "buffered deltas must be replayed in order"
+        );
+    }
+
 }
 
 #[cfg(test)]

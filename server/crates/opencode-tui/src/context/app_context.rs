@@ -1,4 +1,5 @@
 use parking_lot::RwLock;
+use ratatui::layout::Rect;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
@@ -90,6 +91,9 @@ impl MessageDensity {
 
 pub struct AppContext {
     pub theme: RwLock<Theme>,
+    /// Rect the prompt input occupies in the last frame, published by whichever
+    /// view rendered it so overlays can anchor to the input instead of the frame.
+    pub prompt_area: RwLock<Option<Rect>>,
     pub theme_name: RwLock<String>,
     pub router: RwLock<Router>,
     pub keybind: RwLock<KeybindRegistry>,
@@ -127,6 +131,7 @@ impl AppContext {
         let default_theme = Theme::by_name(&default_theme_name).unwrap_or_else(Theme::dark);
         Self {
             theme: RwLock::new(default_theme),
+            prompt_area: RwLock::new(None),
             theme_name: RwLock::new(default_theme_name),
             router: RwLock::new(Router::new()),
             keybind: RwLock::new(KeybindRegistry::new()),

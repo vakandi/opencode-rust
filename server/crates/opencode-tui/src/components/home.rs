@@ -111,6 +111,7 @@ impl HomeView {
             height: layout[3].height,
         };
 
+        *self.context.prompt_area.write() = Some(prompt_area);
         prompt.render(frame, prompt_area);
 
         if self.should_show_tips() {

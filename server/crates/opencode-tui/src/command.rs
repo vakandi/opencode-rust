@@ -493,8 +493,8 @@ impl CommandRegistry {
 
     pub fn search(&self, query: &str) -> Vec<&SlashCommand> {
         let mut scored: Vec<(&SlashCommand, i32)> = self
-            .commands
-            .values()
+            .all_commands()
+            .into_iter()
             .filter_map(|cmd| {
                 let name_score = fuzzy_match(query, &cmd.name);
                 let alias_score = cmd

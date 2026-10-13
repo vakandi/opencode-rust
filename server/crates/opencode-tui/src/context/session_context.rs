@@ -81,6 +81,9 @@ pub enum MessagePart {
 pub struct SessionContext {
     pub sessions: HashMap<String, Session>,
     pub messages: HashMap<String, Vec<Message>>,
+    /// Deltas that arrived before their message existed in `messages`, keyed by
+    /// `(session_id, message_id)`. Flushed once the message is present.
+    pub pending_deltas: HashMap<(String, String), String>,
     pub current_session_id: Option<String>,
     pub session_status: HashMap<String, SessionStatus>,
     pub session_diff: HashMap<String, Vec<DiffEntry>>,
