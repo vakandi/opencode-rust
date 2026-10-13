@@ -46,3 +46,7 @@ credentials.json
 
 # Working scratchpad / notepad
 .ulw/
+
+# Prebuilt release binaries staged for the npm platform packages (38MB each).
+# Publish them with `npm publish` from npm/platform/<target>/, never commit them.
+/npm/platform/*/bin/

@@ -1,0 +1,28 @@
+{
+  "name": "opencoderust",
+  "version": "0.1.0",
+  "description": "Alias for opencode-rust — the open source AI coding agent, in Rust",
+  "homepage": "https://github.com/vakandi/opencode-rust",
+  "bugs": {
+    "url": "https://github.com/vakandi/opencode-rust/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vakandi/opencode-rust.git"
+  },
+  "license": "MIT",
+  "author": "vakandi",
+  "bin": {
+    "opr": "bin/opr.js"
+  },
+  "files": [
+    "bin/opr.js",
+    "README.md"
+  ],
+  "dependencies": {
+    "opencode-rust": "0.1.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

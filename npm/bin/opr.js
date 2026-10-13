@@ -41,20 +41,35 @@ function resolveBinary() {
     }
   }
 
-  // Discovery: the platform-scoped optional dependency, then a local build.
   const suffix = platformSuffix();
-  const scoped = path.join(
-    __dirname, '..', 'node_modules', '@opencode-rust', suffix,
-    'bin', binaryName(),
-  );
-  if (fs.existsSync(scoped)) return scoped;
+  if (!suffix) return null;
 
-  const local = path.join(
-    __dirname, '..', 'node_modules', 'opencode-rust', 'bin', binaryName(),
-  );
-  if (fs.existsSync(local)) return local;
+  // npm hoists the platform-scoped package beside opencode-rust rather than inside it,
+  // so it is usually one level up from here. Walking the ancestors covers both layouts
+  // and the deeper ones that result from nesting under another global package.
+  for (const dir of ancestors(__dirname)) {
+    const scoped = path.join(
+      dir, 'node_modules', '@opencode-rust', suffix, 'bin', binaryName(),
+    );
+    if (fs.existsSync(scoped)) return scoped;
+
+    const nested = path.join(dir, 'node_modules', 'opencode-rust', 'bin', binaryName());
+    if (fs.existsSync(nested)) return nested;
+  }
 
   return null;
+}
+
+function ancestors(start) {
+  const out = [];
+  let dir = start;
+  for (let i = 0; i < 6; i += 1) {
+    out.push(dir);
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return out;
 }
 
 function platformSuffix() {
