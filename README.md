@@ -22,17 +22,35 @@
 
 ## Installation
 
+Three supported surfaces. They install the same engine under the same `opr` command, but they are
+**not** interchangeable — `opr` is a dispatcher in some and a symlink in others.
+
 ### npm — Linux, macOS, Windows
 
 ```bash
-npm install -g opencode-rust
+npm install -g opencode-rust     # the launcher package
+npm install -g opr               # short alias for the same thing
 ```
 
-`opr` ships as a Node launcher, so this is the only path that works on Windows. The installer
-never compiles: prebuilt binaries arrive as platform-scoped packages
-(`opencode-rust-darwin-arm64`, `opencode-rust-linux-x64-gnu`, …) and npm skips the ones your
-machine does not need. If no binary matches your platform the installer says so and points you
-here — it exits cleanly rather than failing your install.
+Both give you `opr`. Pick whichever you type more comfortably; `opencode-rust` is the canonical
+name and `opr` is a thin alias that depends on it.
+
+The launcher is a Node script, which is what makes Windows work at all — `install.sh` writes a
+bash `case` statement that Windows cannot execute.
+
+Install never compiles. Prebuilt binaries arrive as separate packages, one per platform, and npm
+pulls only the one your machine needs:
+
+- `opencode-rust-darwin-arm64` · `opencode-rust-darwin-x64`
+- `opencode-rust-linux-x64-gnu` · `opencode-rust-linux-arm64-gnu` · `opencode-rust-linux-x64-musl`
+- `opencode-rust-win32-x64-msvc`
+
+If no binary matches your platform the installer prints the alternatives and exits cleanly, rather
+than failing your install or forcing a Rust toolchain on you. Building from source is always an
+explicit choice.
+
+> **There is no `opencoderust` package.** npm rejects that name as too similar to
+> `opencode-rust`, so `npm install -g opencoderust` will not work. Use `opr` or `opencode-rust`.
 
 ### Homebrew — macOS and Linux
 
@@ -41,7 +59,8 @@ brew install vakandi/tap/opencode-rust
 ```
 
 Installs `opencode` and links `opr` to it. This formula builds from source, so the first install
-pulls a Rust toolchain as a build dependency.
+pulls a Rust toolchain as a build dependency — which is exactly the work npm refuses to do during
+`npm install`.
 
 ### From source
 
@@ -76,6 +95,17 @@ googlebot "audit my meta tags"        # --agent googlebot
 ```
 
 No prompt given → usage on stderr and exit 2.
+
+### Requirements
+
+Node 18+. The engine spawns Node subprocesses for its plugin bridge and launches MCP servers
+through `npx`, so Node is required regardless of how it was installed.
+
+A provider key is needed before the first run:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+```
 
 ---
 
@@ -263,8 +293,10 @@ crates/
   opencode-storage    SQLite storage
   opencode-tui        Terminal UI
   opencode-permission opencode-config  opencode-core  opencode-types
-  opencode-paths      opencode-command opencode-grep  opencode-proxy
+opencode-paths      opencode-command opencode-grep opencode-proxy
   opencode-util       opencode-watcher
+npm/                   npm packages: launcher, platform binaries, opr alias, homebrew formula
+docs/                  per-crate documentation
 ```
 
 Per-crate documentation lives in [`docs/`](./docs).
@@ -277,6 +309,27 @@ Per-crate documentation lives in [`docs/`](./docs).
 |---|---|
 | `install.sh` | Build + install `opr` and agent aliases. `--force` rebuilds |
 | `clean.sh` | Refuses to clean while this repo's binary is running, warns before touching an `opencode` that is not ours, clears `target/` |
+
+### Publishing
+
+Releases go out through GitHub Actions on a `v*` tag, using npm **trusted publishing** — the
+workflow exchanges a short-lived OIDC JWT for a publish credential. There is no long-lived token
+in the repo and no 2FA code to type.
+
+Trusted publishing must be configured once per package on npmjs.com under
+**Settings → Trusted Publisher**, pointing at `vakandi/opencode-rust` and
+`.github/workflows/publish.yml`. Without that the workflow cannot authenticate.
+
+To publish by hand instead:
+
+```bash
+cd npm/platform/opencode-rust-darwin-arm64 && npm publish --access public
+cd npm                                   && npm publish --access public
+cd npm/alias/opr                         && npm publish --access public
+```
+
+Order matters: the binary package must be on the registry before the launcher, because the
+launcher declares it as an optional dependency.
 
 ---
 
