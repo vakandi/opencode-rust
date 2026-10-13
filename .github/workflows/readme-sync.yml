@@ -1,0 +1,38 @@
+name: Verify npm README is synced
+
+# npm renders the README from inside the tarball. It never fetches the repo's copy,
+# so editing README.md without regenerating npm/README.md leaves the npm page showing
+# stale content with no error anywhere. This fails the build instead.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Regenerate npm/README.md from README.md
+        run: node npm/sync-readme.js
+
+      - name: Fail if the committed copy differs
+        run: |
+          if ! git diff --quiet -- npm/README.md; then
+            echo "::error::npm/README.md is out of sync with README.md."
+            echo "Run 'node npm/sync-readme.js' and commit the result."
+            git --no-pager diff -- npm/README.md
+            exit 1
+          fi
+          echo "npm/README.md is in sync."
+
+      - name: The banner must resolve
+        run: |
+          url=$(grep -oE 'src="https://raw[^"]+"' npm/README.md | head -1 | sed 's/src="//; s/"$//')
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -L "$url")
+          echo "$url -> $code"
+          [ "$code" = "200" ] || { echo "::error::banner asset is not reachable ($code)"; exit 1; }
