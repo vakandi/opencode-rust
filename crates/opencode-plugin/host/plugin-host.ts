@@ -438,6 +438,27 @@ function buildPluginInput(context: PluginContext, client: unknown): UnknownRecor
 // Handlers
 // ---------------------------------------------------------------------------
 
+// A plugin written as `export const MyPlugin: Plugin = async () => {...}` has no default
+// export, so `mod.default` is undefined and the entry is the module namespace object. That
+// shape is the one opencode's own docs demonstrate, and rejecting it meant every such
+// plugin failed with a bare -32600 that named neither cause nor fix.
+function namedExport(mod: unknown, entry: unknown): unknown {
+  if (!entry || typeof entry !== "object") return undefined;
+
+  const named = Object.values(entry as Record<string, unknown>).find(
+    (value) => typeof value === "function",
+  );
+  if (named) return named;
+
+  // Also accept a named export on the namespace itself, skipping the `default` key.
+  if (mod && typeof mod === "object") {
+    return Object.entries(mod as Record<string, unknown>).find(
+      ([key, value]) => key !== "default" && typeof value === "function",
+    )?.[1];
+  }
+  return undefined;
+}
+
 async function handleInitialize(
   id: number,
   params: { pluginPath: string; context: PluginContext },
@@ -454,10 +475,15 @@ async function handleInitialize(
         ? entry
         : typeof entry?.server === "function"
           ? entry.server
-          : undefined;
+          : namedExport(mod, entry);
 
     if (typeof pluginFn !== "function") {
-      sendError(id, -32600, "Plugin module does not export a function");
+      sendError(
+        id,
+        -32600,
+        "Plugin module does not export a function — expected `export default`, " +
+          "a named export, or `{ id, server }`",
+      );
       return;
     }
 
