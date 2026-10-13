@@ -7,7 +7,7 @@
 - `APP_NAME`: `RustingOpenCode`
 - `APP_SHORT_NAME`: `ROCode`
 - `APP_VERSION_DATE`: `2026.02.23`
-- `APP_TAGLINE`: `A Rusted OpenCode Version`
+- `APP_TAGLINE`: `OpenCode in Rust - By @vakandi`
 
 Defined in: `crates/opencode-tui/src/branding.rs`
 

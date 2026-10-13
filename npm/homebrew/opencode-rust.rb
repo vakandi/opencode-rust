@@ -1,11 +1,11 @@
-# Homebrew formula for OpenCodeRust.
+# Homebrew formula for OpenCodeRust — https://github.com/vakandi/opencode-rust
 #
 # Builds from source rather than downloading a prebuilt tarball, because release
-# artifacts are not published yet for all platforms. Homebrew already has the Rust
+# artifacts are not published yet for all platforms. Homebrew already pulls the Rust
 # toolchain as a build dependency, so `brew install` does the compile that `npm`
 # deliberately refuses to do inside a postinstall script.
 
-class Opr < Formula
+class OpencodeRust < Formula
   desc "The open source AI coding agent, in Rust"
   homepage "https://github.com/vakandi/opencode-rust"
   url "https://github.com/vakandi/opencode-rust.git",
@@ -16,7 +16,7 @@ class Opr < Formula
 
   depends_on "rust" => :build
   depends_on "pkg-config" => :build
-  # openssl-sys / onig_sys link against system libraries rather than vendoring them.
+  # openssl-sys and onig_sys link against system libraries rather than vendoring them.
   depends_on "openssl" => :build
   depends_on "node" => :recommended
 
@@ -24,21 +24,24 @@ class Opr < Formula
     system "cargo", "install", "--path", ".", "--bin", "opencode",
            "--root", staging_dir/"cargo-install", "--locked"
     bin.install Dir[staging_dir/"cargo-install"/"bin"/"opencode"]
-    # `opr` is a real symlink here, unlike the npm package where it must be a
-    # dispatching script: Homebrew owns a single, immutable binary per prefix.
+    # `opr` is a plain symlink here, unlike the npm package where it has to be a
+    # dispatching script. That is why `opr --flag` behaves differently between the two
+    # installs: through npm it becomes `opencode tui --flag`, through brew it becomes
+    # `opencode --flag` and is rejected. Give people the `tui` subcommand explicitly.
     ln_sf bin/"opencode", bin/"opr"
   end
 
   def caveats
     <<~EOS
-      The `opencode` binary is installed. A shorter `opr` alias is also created:
+      Installed: opencode, plus an `opr` alias for the same binary.
 
-        opr                  # interactive TUI (same as `opencode tui`)
-        opr run "your task"  # one prompt, runs to completion
+        opr                      # interactive TUI
+        opr run "your task"      # one prompt, runs to completion
         opr serve --port 3000
 
-      Note: `opr --some-flag` becomes `opencode tui --some-flag`. Only a known
-      subcommand is forwarded verbatim; anything else falls through to the TUI.
+      Unlike the npm install, `opr` here is a symlink, not a dispatcher. Passing a
+      global flag (`opr --some-flag`) forwards it to opencode unchanged and will be
+      rejected. Name the subcommand instead: `opr tui --some-flag`.
 
       First run needs a provider key, e.g. `export ANTHROPIC_API_KEY=...`.
       Configuration lives in ~/.config/opencode/opencode.json

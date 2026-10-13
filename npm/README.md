@@ -41,7 +41,7 @@ cd opencode-rust
 ## Homebrew
 
 ```bash
-brew install vakandi/tap/opr
+brew install vakandi/tap/opencode-rust
 ```
 
 ## Requirements

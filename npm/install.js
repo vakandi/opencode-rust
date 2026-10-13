@@ -83,12 +83,29 @@ function platformSuffix() {
   return null;
 }
 
+function candidatePaths(name) {
+  const out = [];
+
+  // install.js sits at the package root, so `__dirname` is already the root — but npm
+  // hoists dependencies, and the platform package may land in any ancestor's
+  // node_modules. Walk up rather than assuming one layout.
+  let dir = __dirname;
+  for (let i = 0; i < 6; i += 1) {
+    out.push(path.join(dir, 'node_modules', '@opencode-rust', platformSuffix(), 'bin', name));
+    out.push(path.join(dir, 'node_modules', 'opencode-rust', 'bin', name));
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return out;
+}
+
 function findBinary() {
   const root = path.join(__dirname, '..');
   const name = binaryName();
 
   // 1. Already resolved by a previous run.
-  const resolvedFile = path.join(root, 'lib', 'resolved.json');
+  const resolvedFile = path.join(__dirname, 'lib', 'resolved.json');
   if (fs.existsSync(resolvedFile)) {
     try {
       const { path: p } = JSON.parse(fs.readFileSync(resolvedFile, 'utf8'));
@@ -101,12 +118,10 @@ function findBinary() {
   if (fs.existsSync(local)) return local;
 
   // 3. The platform-scoped optional dependency.
-  const suffix = platformSuffix();
-  if (suffix) {
-    const scoped = path.join(
-      root, 'node_modules', '@opencode-rust', suffix, 'bin', name,
-    );
-    if (fs.existsSync(scoped)) return scoped;
+  if (platformSuffix()) {
+    for (const p of candidatePaths(name)) {
+      if (fs.existsSync(p)) return p;
+    }
   }
 
   return null;
@@ -159,7 +174,8 @@ function main() {
   // Fail loudly and specifically if the CPU cannot execute what we shipped.
   const { execFileSync } = require('child_process');
   try {
-    const out = execFileSync(binPath, ['--version'], {
+    // `version` is a subcommand here; there is no top-level `--version` flag.
+    const out = execFileSync(binPath, ['version'], {
       encoding: 'utf8',
       timeout: 15000,
       stdio: ['ignore', 'pipe', 'pipe'],

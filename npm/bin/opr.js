@@ -102,7 +102,9 @@ function main() {
   if (argv.length === 0) {
     args = [];
   } else if (argv[0] === '-v' || argv[0] === '--version') {
-    args = ['--version'];
+    // The clap definition has no top-level `--version` flag — only a `version`
+    // subcommand. Forwarding `--version` verbatim is rejected as an unknown argument.
+    args = ['version'];
   } else if (!SUBCOMMANDS.has(argv[0])) {
     args = ['tui', ...argv];
   }
