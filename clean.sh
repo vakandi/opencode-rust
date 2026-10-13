@@ -32,9 +32,31 @@ BIN="$ROOT/target/release/opencode"
 
 log "checking for running opencode from this repo"
 
-OURS="$(pgrep -fl "$BIN" 2>/dev/null || true)"
+# Match on the binary path in EITHER form. `pgrep -f "$BIN"` alone missed every
+# server started as `./target/release/opencode`, because pgrep matches the
+# literal command line — so clean.sh would happily delete target/ out from under
+# a live server. The release binary is also checked by inode via lsof, which
+# catches a copy renamed or reached by a relative path.
+OURS=""
+while read -r pid; do
+  [ -n "$pid" ] || continue
+  cmd="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+  case "$cmd" in
+    *"$BIN"*|*target/release/opencode*) OURS="${OURS}${pid}"$'\n' ;;
+  esac
+done <<EOF
+$(pgrep -f opencode 2>/dev/null || true)
+EOF
+
+if [ -z "$OURS" ] && [ -f "$BIN" ]; then
+  BINPID="$(lsof -t -- "$BIN" 2>/dev/null || true)"
+  [ -n "$BINPID" ] && OURS="$BINPID"$'\n'
+fi
+
 if [ -n "$OURS" ]; then
-  printf '%s\n' "$OURS" | sed 's/^/    /'
+  printf '%s' "$OURS" | while read -r pid; do
+    [ -n "$pid" ] && printf '    pid %s  %s\n' "$pid" "$(ps -p "$pid" -o command= 2>/dev/null | cut -c1-80)"
+  done
   bad "opencode from this repo is still running — stop it before cleaning"
   exit 1
 fi
@@ -56,14 +78,44 @@ if [ "$ASSUME_YES" -eq 0 ]; then
   esac
 fi
 
+# Removes a tree, clearing the things that make `rm` fail with a bare
+# "Permission denied": immutable/append flags (uappnd/uchg) and write bits that
+# a previous partial clean may have stripped. Then it reports the specific paths
+# that survived, instead of dying on set -e with no idea which ones.
+# Returns 0 when the tree is gone, 1 when something is left.
+remove_tree() {
+  local dir="$1"
+  [ -e "$dir" ] || return 0
+
+  # macOS only: nouchg clears both immutable and append-only.
+  if [ "$(uname -s)" = "Darwin" ]; then
+    chflags -R nouchg "$dir" 2>/dev/null || true
+  fi
+  chmod -R u+rwX "$dir" 2>/dev/null || true
+  rm -rf "$dir" 2>/dev/null || true
+
+  if [ -e "$dir" ]; then
+    warn "could not fully remove $dir — leftovers:"
+    find "$dir" -maxdepth 3 2>/dev/null | head -10 | while read -r left; do
+      printf '        %s\n' "${left#"$ROOT"/}"
+    done
+    # The usual cause on macOS is App Management (TCC): another app created the
+    # file and this shell lacks permission to delete it until it is granted Full
+    # Disk Access. Name it rather than leaving "permission denied" on its own.
+    bad "grant this terminal Full Disk Access (System Settings → Privacy & Security) and re-run"
+    return 1
+  fi
+  return 0
+}
+
 if [ -d "$ROOT/target" ]; then
-  rm -rf "$ROOT/target"
-  ok "removed target/"
+  if remove_tree "$ROOT/target"; then
+    ok "removed target/"
+  else
+    warn "target/ is still present — the rebuild below may reuse stale artefacts"
+  fi
 else
   ok "no target/ to remove"
 fi
-
-STAMP="$ROOT/target/.opr-build-stamp"
-[ -f "$STAMP" ] && rm -f "$STAMP" 2>/dev/null || true
 
 log "done. Run ./install.sh to rebuild."
