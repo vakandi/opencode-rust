@@ -27,7 +27,7 @@
 ## Installation
 
 Three supported surfaces. They install the same engine under the same `opr` command, but they are
-**not** interchangeable — `opr` is a dispatcher in some and a symlink in others.
+**not** interchangeable — `opr` is a dispatcher in some and the engine binary itself in others.
 
 ### npm — Linux, macOS, Windows
 
@@ -55,9 +55,10 @@ explicit choice.
 brew install vakandi/tap/opencode-rust
 ```
 
-Installs `opencode` and links `opr` to it. This formula builds from source, so the first install
-pulls a Rust toolchain as a build dependency — which is exactly the work npm refuses to do during
-`npm install`.
+Installs `opr` and nothing else. This formula never writes a binary named `opencode` into your
+Homebrew prefix, so it cannot shadow the upstream opencode CLI if you have it installed. The
+formula builds from source, so the first install pulls a Rust toolchain as a build dependency —
+which is exactly the work npm refuses to do during `npm install`.
 
 ### From source
 
@@ -77,9 +78,9 @@ opr serve --port 3000                 # HTTP server
 ```
 
 > **`opr` behaves slightly differently per install.** Through npm it is a dispatching script, so
-> `opr --some-flag` becomes `opencode tui --some-flag`. Through Homebrew it is a plain symlink, so
-> the same command becomes `opencode --some-flag` and is rejected — name the subcommand instead
-> (`opr tui --some-flag`).
+> `opr --some-flag` becomes `opencode tui --some-flag`. Through Homebrew and `install.sh` it is the
+> engine binary itself (Homebrew installs it under the name `opr`), so the same command becomes
+> `--some-flag` and is rejected — name the subcommand instead (`opr tui --some-flag`).
 
 ### Named-agent shortcuts
 
