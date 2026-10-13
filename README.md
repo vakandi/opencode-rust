@@ -28,12 +28,8 @@ Three supported surfaces. They install the same engine under the same `opr` comm
 ### npm — Linux, macOS, Windows
 
 ```bash
-npm install -g opencode-rust     # the launcher package
-npm install -g opr               # short alias for the same thing
+npm install -g opencode-rust
 ```
-
-Both give you `opr`. Pick whichever you type more comfortably; `opencode-rust` is the canonical
-name and `opr` is a thin alias that depends on it.
 
 The launcher is a Node script, which is what makes Windows work at all — `install.sh` writes a
 bash `case` statement that Windows cannot execute.
@@ -48,9 +44,6 @@ pulls only the one your machine needs:
 If no binary matches your platform the installer prints the alternatives and exits cleanly, rather
 than failing your install or forcing a Rust toolchain on you. Building from source is always an
 explicit choice.
-
-> **There is no `opencoderust` package.** npm rejects that name as too similar to
-> `opencode-rust`, so `npm install -g opencoderust` will not work. Use `opr` or `opencode-rust`.
 
 ### Homebrew — macOS and Linux
 
@@ -325,7 +318,6 @@ To publish by hand instead:
 ```bash
 cd npm/platform/opencode-rust-darwin-arm64 && npm publish --access public
 cd npm                                   && npm publish --access public
-cd npm/alias/opr                         && npm publish --access public
 ```
 
 Order matters: the binary package must be on the registry before the launcher, because the
