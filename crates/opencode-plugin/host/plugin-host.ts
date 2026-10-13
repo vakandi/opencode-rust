@@ -438,27 +438,6 @@ function buildPluginInput(context: PluginContext, client: unknown): UnknownRecor
 // Handlers
 // ---------------------------------------------------------------------------
 
-// A plugin written as `export const MyPlugin: Plugin = async () => {...}` has no default
-// export, so `mod.default` is undefined and the entry is the module namespace object. That
-// shape is the one opencode's own docs demonstrate, and rejecting it meant every such
-// plugin failed with a bare -32600 that named neither cause nor fix.
-function namedExport(mod: unknown, entry: unknown): unknown {
-  if (!entry || typeof entry !== "object") return undefined;
-
-  const named = Object.values(entry as Record<string, unknown>).find(
-    (value) => typeof value === "function",
-  );
-  if (named) return named;
-
-  // Also accept a named export on the namespace itself, skipping the `default` key.
-  if (mod && typeof mod === "object") {
-    return Object.entries(mod as Record<string, unknown>).find(
-      ([key, value]) => key !== "default" && typeof value === "function",
-    )?.[1];
-  }
-  return undefined;
-}
-
 async function handleInitialize(
   id: number,
   params: { pluginPath: string; context: PluginContext },
@@ -470,20 +449,30 @@ async function handleInitialize(
     // exports `{ id, server }`, so `mod.default` is an object and a bare-function check
     // rejects the whole plugin with -32600. The TypeScript server resolves the same shapes via
     // `readV1Plugin` (packages/opencode/src/plugin/index.ts).
-    const pluginFn =
+    let pluginFn =
       typeof entry === "function"
         ? entry
         : typeof entry?.server === "function"
           ? entry.server
-          : namedExport(mod, entry);
+          : undefined;
+
+    // A plugin that exports only a named const (`export const ProxyLocalPlugin = ...`)
+    // has no `default`, so `mod.default ?? mod` leaves the module namespace as `entry`
+    // and the checks above all miss. Upstream calls every exported function, so take the
+    // first function-valued export. Without this, proxy-local never loads and its
+    // rotating proxy is never injected, leaving traffic on the direct connection.
+    if (!pluginFn) {
+      for (const [name, value] of Object.entries(mod)) {
+        if (name === "default") continue;
+        if (typeof value === "function") {
+          pluginFn = value;
+          break;
+        }
+      }
+    }
 
     if (typeof pluginFn !== "function") {
-      sendError(
-        id,
-        -32600,
-        "Plugin module does not export a function — expected `export default`, " +
-          "a named export, or `{ id, server }`",
-      );
+      sendError(id, -32600, "Plugin module does not export a function");
       return;
     }
 

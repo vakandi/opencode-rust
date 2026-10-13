@@ -253,29 +253,27 @@ impl OpenAIProvider {
     /// credential: a provider holding a real key still needs it, so the key is a
     /// parameter rather than the marker that picks the constructor.
     pub fn zen_with_key(base_url: impl Into<String>, api_key: String) -> Self {
-        let session = std::env::var("OPENCODE_ZEN_SESSION").unwrap_or_default();
-        let request = std::env::var("OPENCODE_ZEN_REQUEST").unwrap_or_default();
         // Captured off a working `opencode run` (models.ts) rather than guessed:
-        // a wrong User-Agent or a "global" project id is refused with the same
-        // FreeTierError as no fingerprint at all, so the exact bytes matter.
-        let mut headers = vec![
+        // a wrong User-Agent or a project id other than "global" is refused with the
+        // same FreeTierError as no fingerprint at all, so the exact bytes matter.
+        //
+        // No session/request pair here: upstream mints both per request from the live
+        // session and message id, and serve-rust.sh used to pin them from
+        // ~/.omp/agent/models.yml — oh-my-pi, a different harness. chat_stream_legacy
+        // derives them per call instead.
+        let headers = vec![
             (
                 "User-Agent".to_string(),
                 std::env::var("OPENCODE_ZEN_USER_AGENT")
-                    .unwrap_or_else(|_| "opencode/1.18.35 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14".to_string()),
+                    .unwrap_or_else(|_| "opencode/1.19.0 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14".to_string()),
             ),
             ("x-opencode-client".to_string(), "cli".to_string()),
             (
                 "x-opencode-project".to_string(),
                 std::env::var("OPENCODE_ZEN_PROJECT")
-                    .unwrap_or_else(|_| "838c9a927763d1107fa080f852eba256dc71f064".to_string()),
+                    .unwrap_or_else(|_| "global".to_string()),
             ),
         ];
-        if !session.is_empty() && !request.is_empty() {
-            headers.push(("x-opencode-session".to_string(), session.clone()));
-            headers.push(("x-opencode-session-id".to_string(), session));
-            headers.push(("x-opencode-request".to_string(), request));
-        }
         Self::from_config(
             OpenAIConfig {
                 api_key,

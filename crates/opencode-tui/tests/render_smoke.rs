@@ -38,7 +38,7 @@ fn render_paints_the_home_route_and_snapshots_screen_lines() {
         "the frame should not be blank, got:\n{rendered}"
     );
     assert!(
-        rendered.contains("OpenCode in Rust - By @vakandi"),
+        rendered.contains("A Rusted OpenCode Version"),
         "the home route should paint the tagline, got:\n{rendered}"
     );
     assert!(
