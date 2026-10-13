@@ -30,7 +30,7 @@ npm install -g opencode-rust
 
 `opr` ships as a Node launcher, so this is the only path that works on Windows. The installer
 never compiles: prebuilt binaries arrive as platform-scoped packages
-(`@opencode-rust/darwin-arm64`, `@opencode-rust/linux-x64-gnu`, …) and npm skips the ones your
+(`opencode-rust-darwin-arm64`, `opencode-rust-linux-x64-gnu`, …) and npm skips the ones your
 machine does not need. If no binary matches your platform the installer says so and points you
 here — it exits cleanly rather than failing your install.
 

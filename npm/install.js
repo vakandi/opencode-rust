@@ -75,11 +75,12 @@ function isMusl() {
 
 function platformSuffix() {
   const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
-  if (process.platform === 'darwin') return `darwin-${arch}`;
+  const prefix = 'opencode-rust-';
+  if (process.platform === 'darwin') return `${prefix}darwin-${arch}`;
   if (process.platform === 'linux') {
-    return `linux-${arch}-${isMusl() ? 'musl' : 'gnu'}`;
+    return `${prefix}linux-${arch}-${isMusl() ? 'musl' : 'gnu'}`;
   }
-  if (process.platform === 'win32') return 'win32-x64-msvc';
+  if (process.platform === 'win32') return `${prefix}win32-x64-msvc`;
   return null;
 }
 
@@ -91,7 +92,7 @@ function candidatePaths(name) {
   // node_modules. Walk up rather than assuming one layout.
   let dir = __dirname;
   for (let i = 0; i < 6; i += 1) {
-    out.push(path.join(dir, 'node_modules', '@opencode-rust', platformSuffix(), 'bin', name));
+    out.push(path.join(dir, 'node_modules', platformSuffix(), 'bin', name));
     out.push(path.join(dir, 'node_modules', 'opencode-rust', 'bin', name));
     const parent = path.dirname(dir);
     if (parent === dir) break;

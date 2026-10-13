@@ -49,7 +49,7 @@ function resolveBinary() {
   // and the deeper ones that result from nesting under another global package.
   for (const dir of ancestors(__dirname)) {
     const scoped = path.join(
-      dir, 'node_modules', '@opencode-rust', suffix, 'bin', binaryName(),
+      dir, 'node_modules', suffix, 'bin', binaryName(),
     );
     if (fs.existsSync(scoped)) return scoped;
 
@@ -74,12 +74,13 @@ function ancestors(start) {
 
 function platformSuffix() {
   const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
-  if (process.platform === 'darwin') return `darwin-${arch}`;
+  const prefix = 'opencode-rust-';
+  if (process.platform === 'darwin') return `${prefix}darwin-${arch}`;
   if (process.platform === 'linux') {
     // musl (Alpine) and gnu (glibc) ship as different packages.
-    return `linux-${arch}-${isMusl() ? 'musl' : 'gnu'}`;
+    return `${prefix}linux-${arch}-${isMusl() ? 'musl' : 'gnu'}`;
   }
-  if (process.platform === 'win32') return 'win32-x64-msvc';
+  if (process.platform === 'win32') return `${prefix}win32-x64-msvc`;
   return null;
 }
 

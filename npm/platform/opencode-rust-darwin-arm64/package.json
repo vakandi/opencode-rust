@@ -1,5 +1,5 @@
 {
-  "name": "@opencode-rust/darwin-arm64",
+  "name": "opencode-rust-darwin-arm64",
   "version": "0.1.0",
   "description": "Prebuilt OpenCodeRust binary for macOS (Apple Silicon)",
   "homepage": "https://github.com/vakandi/opencode-rust",

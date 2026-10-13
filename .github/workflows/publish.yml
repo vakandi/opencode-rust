@@ -8,7 +8,7 @@ name: Publish to npm
 # (package -> Settings -> Trusted Publisher), pointing at vakandi/opencode-rust and this
 # file's name. This workflow only works after that is done.
 #
-# Platform order matters: @opencode-rust/* declare opencode-rust as an optional
+# Platform order matters: opencode-rust-* declare opencode-rust as an optional
 # dependency, and npm resolves it from the registry, so the binary package has to be
 # public before the launcher package is useful.
 
@@ -34,7 +34,7 @@ jobs:
 
       - name: Publish the native binary
         id: binary
-        working-directory: npm/platform/darwin-arm64
+        working-directory: npm/platform/opencode-rust-darwin-arm64
         run: npm publish --provenance --access public
 
       - name: Publish the launcher
@@ -47,7 +47,7 @@ jobs:
 
       - name: Confirm all three are on the registry
         run: |
-          for p in "@opencode-rust/darwin-arm64@0.1.0" "opencode-rust@0.1.0" "opencoderust@0.1.0"; do
+          for p in "opencode-rust-darwin-arm64@0.1.0" "opencode-rust@0.1.0" "opencoderust@0.1.0"; do
             printf '%s -> ' "$p"
             npm view "$p" version
           done

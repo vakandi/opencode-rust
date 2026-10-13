@@ -22,9 +22,9 @@ known subcommand is forwarded verbatim.
 Prebuilt binaries ship as platform-scoped optional dependencies. `npm install` pulls only
 the one matching your machine:
 
-- `@opencode-rust/darwin-arm64` · `@opencode-rust/darwin-x64`
-- `@opencode-rust/linux-x64-gnu` · `@opencode-rust/linux-arm64-gnu` · `@opencode-rust/linux-x64-musl`
-- `@opencode-rust/win32-x64-msvc`
+- `opencode-rust-darwin-arm64` · `opencode-rust-darwin-x64`
+- `opencode-rust/linux-x64-gnu` · `opencode-rust/linux-arm64-gnu` · `opencode-rust/linux-x64-musl`
+- `opencode-rust-win32-x64-msvc`
 
 When no binary matches your platform the installer prints the alternatives and exits
 cleanly — it never compiles during `npm install`, because that would force a Rust
