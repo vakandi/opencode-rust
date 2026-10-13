@@ -1,6 +1,6 @@
 {
   "name": "opencode-rust",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "The open source AI coding agent, in Rust. CLI, TUI and HTTP server for local AI agents.",
   "keywords": [
     "opencode",
@@ -43,11 +43,11 @@
     "chalk": "^4.1.2"
   },
   "optionalDependencies": {
-    "opencode-rust-darwin-arm64": "0.1.1",
-    "opencode-rust-darwin-x64": "0.1.1",
-    "opencode-rust-linux-x64-gnu": "0.1.1",
-    "opencode-rust-linux-x64-musl": "0.1.1",
-    "opencode-rust-linux-arm64-gnu": "0.1.1",
-    "opencode-rust-win32-x64-msvc": "0.1.1"
+    "opencode-rust-darwin-arm64": "0.1.2",
+    "opencode-rust-darwin-x64": "0.1.2",
+    "opencode-rust-linux-x64-gnu": "0.1.2",
+    "opencode-rust-linux-x64-musl": "0.1.2",
+    "opencode-rust-linux-arm64-gnu": "0.1.2",
+    "opencode-rust-win32-x64-msvc": "0.1.2"
   }
 }

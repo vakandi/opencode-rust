@@ -43,7 +43,7 @@ jobs:
 
       - name: Confirm both are on the registry
         run: |
-          for p in "opencode-rust-darwin-arm64@0.1.1" "opencode-rust@0.1.1"; do
+          for p in "opencode-rust-darwin-arm64@0.1.2" "opencode-rust@0.1.2"; do
             printf '%s -> ' "$p"
             npm view "$p" version
           done
