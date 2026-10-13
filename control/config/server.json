@@ -1,5 +1,0 @@
-{
-  "port": 5656,
-  "concurrency": 8,
-  "childPort": 4096
-}

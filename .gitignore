@@ -1,77 +1,32 @@
-# Secrets — never commit
-.env
-*.token
-tunnel.token
-proxies.txt
-
-# Rust build output
-server/target/
-
-# Runtime state. The Rust DB lives here (OPENCODE_PATHS_ROOT=server/data), and the
-# control plane writes runs/frames/prompts under control/data. All of it is
-# regenerable and must never enter git.
-server/data/
-control/data/
-
-# Bun deps
-control/node_modules/
-
-# Stray databases anywhere in the tree
-*.db
-*.db-shm
-*.db-wal
-
-# Local scratch
-.omo/
-.codegraph/
-
-# NOTE: there is intentionally NO rule ignoring server/crates/ — the Rust source is
-# the product and must be tracked.
-#
-# NOTE: there is intentionally NO AGENTS.md in this repo, and none should ever be
-# added. The Rust server walks UP from every subworkers/<name>/workspace to collect
-# instruction files, so a repo-root AGENTS.md would be injected into all 22 agent
-# runs and silently contaminate every persona.
-# Agent workspaces are RUNTIME DATA, not source: 1.1 GB of run output, and
-# app-clone-factory alone holds 27 nested git repos the agents built. Tracking
-# them makes every clone of this repo empty those directories, and absorbs other
-# projects' history. Agent homes (PROMPT.md + registry) stay tracked; workspaces
-# do not.
-subworkers/*/workspace/
+# Rust
+/target/
+**/*.rs.bk
 
 # macOS
 .DS_Store
+.AppleDouble
+.LSOverride
 
-# ── Rust build artefacts ───────────────────────────────────────────────
-# `target/` alone is ~13 GB of compiled binaries and dependency sources.
-# Keeping it out is what makes a clone cheap and a push fast.
-/target/
-**/*.rs.bk
-*.pdb
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
 
-# Crash dumps. A headless Chromium segfault writes a 175 MB ELF core into the
-# cwd; two of those reached git history and made the repository 458 MB.
-core
-core.*
-*.core
+# Env / secrets
+.env
+.env.*
+!.env.example
 
-# ── Runtime data, never source ─────────────────────────────────────────
-# Frame transcripts and run records are regenerated on every run.
-/control/data/frames/
-/control/data/cache/
-/control/data/runs.json
-/control/data/state.json
+# Logs
+*.log
 
-# Agent workspaces: run outputs, scraper dumps, downloaded media. Tracked
-# earlier, they absorbed hundreds of MB of other projects' output.
-/subworkers/*/workspace/
-/subworkers/*/*/workspace/
+# TypeScript reference implementation (1.1GB) — read-only reference, never committed
+.old/
 
-# node / bun
-node_modules/
-*.tsbuildinfo
-bun.lockb
+# Plugin (omo) runtime state written into the repo root during test runs
+.omo/
 
-# Local tooling scratch
-/opencode.log
-/.opencode_model
+# Working scratchpad / notepad
+.ulw/
