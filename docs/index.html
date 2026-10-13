@@ -1,0 +1,1146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>opencode-rust — a Rust port of the OpenCode AI coding agent</title>
+<meta name="description" content="opencode-rust is a standalone Rust port of the open-source AI coding agent OpenCode: 21 crates, 571 passing tests, MIT licensed. Conversation history spills to SQLite, tool schemas are cached per (model, tool-set), and instance state is pooled by config hash with LRU + TTL eviction — so no Docker and no container runtime are required. Install with `opr` via npm, Homebrew, or source.">
+<meta name="author" content="opencode-rust contributors">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0B0A09">
+
+<link rel="canonical" href="https://vakandi.github.io/opencode-rust/">
+
+<!-- Open Graph. og:image is intentionally omitted: no image asset exists in this
+     repository yet, and referencing a missing file yields a broken preview. Add
+     <meta property="og:image" content="https://vakandi.github.io/opencode-rust/og.png">
+     (and matching twitter:image) once a 1200x630 asset is committed. -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="opencode-rust">
+<meta property="og:url" content="https://vakandi.github.io/opencode-rust/">
+<meta property="og:title" content="opencode-rust — a Rust port of the OpenCode AI coding agent">
+<meta property="og:description" content="A standalone Rust port of the OpenCode coding agent: 21 crates, 571 passing tests, MIT licensed. SQLite-backed conversation history, cached tool schemas, pooled instance state. No Docker, no container runtime. Install as `opr`.">
+
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="opencode-rust — a Rust port of the OpenCode AI coding agent">
+<meta name="twitter:description" content="21 crates, 571 passing tests, MIT licensed. SQLite-backed history, cached tool schemas, pooled instance state with LRU + TTL eviction. No Docker required.">
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20fill='%230B0A09'/%3E%3Cpath%20d='M12%208%20L6%2016%20L12%2024'%20stroke='%23DEA584'%20stroke-width='2.5'%20fill='none'/%3E%3Cpath%20d='M20%208%20L26%2016%20L20%2024'%20stroke='%23DEA584'%20stroke-width='2.5'%20fill='none'/%3E%3Crect%20x='14.5'%20y='9'%20width='3'%20height='14'%20fill='%23DEA584'/%3E%3C/svg%3E">
+
+<!-- Copy buttons cannot function without scripting. Hide them rather than ship
+     inert controls; the command text itself stays selectable. -->
+<noscript><style>.js-only{display:none !important}</style></noscript>
+
+<style>
+/* ==========================================================================
+   opencode-rust — single-file stylesheet
+   Archetype: tactical terminal. Dark-only, hairline-ruled, monospace metadata,
+   one accent at full saturation, no gradients except a single warm glow.
+   ========================================================================== */
+
+:root{
+  /* ---- surface ---- */
+  --bg:        #0B0A09;
+  --panel:     #14110F;
+  --raised:    #1C1815;
+  --sunken:    #080706;
+
+  /* ---- rule ---- */
+  --line:      #2A2320;
+  --line-2:    #3A302B;
+
+  /* ---- text (contrast measured against --bg) ---- */
+  --text:      #EDE6E0;  /* 17.4:1 */
+  --text-mute: #A3988F;  /*  7.0:1 */
+  --text-dim:  #8A7F77;  /*  5.1:1 */
+  --text-ghost:#5A514B;  /* decorative only */
+
+  /* ---- accent ---- */
+  --rust:      #DEA584;  /* 9.3:1 on --bg */
+  --rust-hot:  #F0743A;  /* hover / active only */
+  --rust-dim:  #6B4F41;  /* rules, ticks */
+  --ok:        #3DD68C;  /* ONE status indicator only */
+
+  /* ---- type ---- */
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* ---- space: 8px base ---- */
+  --s1: .25rem; --s2: .5rem;  --s3: .75rem; --s4: 1rem;
+  --s5: 1.5rem; --s6: 2rem;   --s7: 3rem;   --s8: 4rem;
+  --s9: 6rem;
+
+  --gut: clamp(1.25rem, 4vw, 2.5rem);
+  --max: 1180px;
+  --nav-h: 60px;
+}
+
+*,*::before,*::after{ box-sizing:border-box }
+
+html{ scroll-behavior:smooth; scroll-padding-top:calc(var(--nav-h) + 16px) }
+@media (prefers-reduced-motion: reduce){ html{ scroll-behavior:auto } }
+
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--sans);
+  font-size:clamp(1rem, .96rem + .18vw, 1.0625rem);
+  line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+  overflow-x:hidden;
+}
+
+/* scanline film — one surface, very low alpha */
+body::after{
+  content:"";
+  position:fixed; inset:0; z-index:9998;
+  pointer-events:none;
+  background:repeating-linear-gradient(0deg,
+    rgba(0,0,0,0) 0 2px, rgba(222,165,132,.020) 2px 4px);
+}
+
+img{ max-width:100%; height:auto; display:block }
+a{ color:var(--rust); text-decoration-thickness:1px; text-underline-offset:3px }
+a:hover{ color:var(--rust-hot) }
+
+:focus-visible{
+  outline:2px solid var(--rust);
+  outline-offset:3px;
+  border-radius:2px;
+}
+::selection{ background:var(--rust); color:var(--bg) }
+
+/* ---------- typography ---------- */
+h1,h2,h3,h4{
+  margin:0;
+  font-weight:700;
+  line-height:1.08;
+  letter-spacing:-.022em;
+  text-wrap:balance;
+  /* Long unbroken tokens (URLs, slugs, placeholder tags) must wrap rather than
+     overflow their grid track and paint over an adjacent column. */
+  overflow-wrap:break-word;
+}
+h1{ font-size:clamp(2.5rem, 6.4vw, 4.75rem); letter-spacing:-.035em }
+h2{ font-size:clamp(1.7rem, 3.2vw, 2.5rem); letter-spacing:-.028em }
+h3{ font-size:clamp(1.05rem, 1.5vw, 1.25rem); letter-spacing:-.01em }
+p{ margin:0 }
+a{ color:var(--rust) }
+
+/* monospace metadata: uppercase, tracked out — the terminal voice */
+.mono{
+  font-family:var(--mono);
+  font-size:.75rem;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--text-dim);
+}
+.eyebrow{
+  display:flex; align-items:center; gap:.6rem;
+  font-family:var(--mono);
+  font-size:.72rem;
+  letter-spacing:.2em;
+  text-transform:uppercase;
+  color:var(--rust);
+}
+.eyebrow::before{
+  content:""; width:26px; height:1px;
+  background:var(--rust-dim);
+}
+.lede{
+  color:var(--text-mute);
+  max-width:62ch;
+  font-size:clamp(1rem, .98rem + .25vw, 1.125rem);
+}
+
+/* ---------- layout ---------- */
+.wrap{ width:100%; max-width:var(--max); margin-inline:auto; padding-inline:var(--gut) }
+section{ padding-block:var(--s8) }
+@media (min-width:900px){ section{ padding-block:var(--s9) } }
+
+.sec-head{ margin-bottom:var(--s7) }
+.sec-head .eyebrow{ margin-bottom:var(--s4) }
+.sec-head h2{ margin-bottom:var(--s4) }
+
+.rule{ height:1px; background:var(--line); border:0; margin:0 }
+
+.skip{
+  position:absolute; left:var(--s4); top:-100px;
+  z-index:10000;
+  background:var(--rust); color:var(--bg);
+  padding:.7rem 1.1rem;
+  font-family:var(--mono); font-size:.8rem;
+  font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+  text-decoration:none; border-radius:2px;
+  transition:top .15s ease;
+}
+.skip:focus{ top:var(--s4); color:var(--bg) }
+
+/* ---------- buttons ---------- */
+.btn{
+  display:inline-flex; align-items:center; gap:.55rem;
+  min-height:44px;
+  padding:.7rem 1.15rem;
+  font-family:var(--mono);
+  font-size:.78rem; font-weight:600;
+  letter-spacing:.1em; text-transform:uppercase;
+  text-decoration:none;
+  border:1px solid var(--line-2);
+  border-radius:2px;
+  background:transparent;
+  color:var(--text);
+  cursor:pointer;
+  transition:background-color .16s ease, border-color .16s ease, color .16s ease, transform .1s ease;
+}
+.btn:hover{ border-color:var(--rust); color:var(--rust) }
+.btn:active{ transform:translateY(1px) }
+.btn-primary{
+  background:var(--rust);
+  border-color:var(--rust);
+  color:#140F0C;
+  font-weight:700;
+}
+.btn-primary:hover{ background:var(--rust-hot); border-color:var(--rust-hot); color:#140F0C }
+.btn-sm{ min-height:38px; padding:.45rem .7rem; font-size:.7rem }
+.btn svg{ width:14px; height:14px; flex:none }
+
+/* ---------- nav ---------- */
+.nav{
+  position:sticky; top:0; z-index:900;
+  background-color:rgba(11,10,9,.94);
+  background:color-mix(in srgb, var(--bg) 88%, transparent);
+  -webkit-backdrop-filter:blur(12px);
+  backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--line);
+}
+.nav-in{
+  height:var(--nav-h);
+  display:flex; align-items:center; gap:var(--s5);
+}
+.brand{
+  display:inline-flex; align-items:center; gap:.6rem;
+  font-family:var(--mono); font-weight:700;
+  font-size:.9rem; letter-spacing:.02em;
+  color:var(--text); text-decoration:none;
+  white-space:nowrap;
+}
+.brand:hover{ color:var(--rust) }
+.brand-mark{ width:20px; height:20px; flex:none; color:var(--rust) }
+.brand-sep{ color:var(--text-ghost) }
+
+.nav-links{ display:none; margin-left:auto }
+@media (min-width:900px){
+  .nav-links{ display:flex; align-items:center; gap:var(--s6); margin-left:auto }
+  .navmenu{ display:none }
+}
+.nav-links a{
+  font-family:var(--mono);
+  font-size:.74rem; letter-spacing:.13em; text-transform:uppercase;
+  color:var(--text-dim); text-decoration:none;
+}
+.nav-links a:hover{ color:var(--rust) }
+.nav-cta{ display:flex; gap:var(--s3); margin-left:auto }
+@media (min-width:900px){ .nav-cta{ margin-left:0 } }
+
+/* Narrow-viewport nav budget. Below 700px the row is brand + Install + Menu:
+   the secondary GitHub button drops out (it remains in the footer and the
+   menu), and the gap tightens so the row never exceeds the viewport. */
+@media (max-width:699px){
+  .nav-in{ gap:var(--s3) }
+  .nav-cta .btn:not(.btn-primary){ display:none }
+}
+@media (max-width:400px){
+  .brand span{ display:none }   /* mark only */
+  .btn-sm{ padding:.45rem .55rem }
+}
+
+.navmenu{ position:relative; margin-left:auto }
+.navmenu > summary{
+  list-style:none;
+  display:inline-flex; align-items:center;
+  min-height:38px; padding:.45rem .7rem;
+  border:1px solid var(--line-2); border-radius:2px;
+  font-family:var(--mono); font-size:.7rem;
+  letter-spacing:.13em; text-transform:uppercase;
+  color:var(--text); cursor:pointer;
+}
+.navmenu > summary::-webkit-details-marker{ display:none }
+.navmenu[open] > summary{ border-color:var(--rust); color:var(--rust) }
+.navmenu ul{
+  position:absolute; right:0; top:calc(100% + 8px);
+  min-width:200px; margin:0; padding:var(--s2);
+  list-style:none;
+  background:var(--raised);
+  border:1px solid var(--line-2); border-radius:2px;
+  display:grid; gap:2px;
+  box-shadow:0 18px 40px -12px rgba(0,0,0,.85);
+}
+.navmenu a{
+  display:block; padding:.6rem .7rem;
+  font-family:var(--mono); font-size:.75rem;
+  letter-spacing:.1em; text-transform:uppercase;
+  color:var(--text-mute); text-decoration:none; border-radius:2px;
+}
+.navmenu a:hover{ background:var(--panel); color:var(--rust) }
+
+/* ---------- hero ---------- */
+.hero{
+  position:relative;
+  padding-block:clamp(3.5rem, 9vw, 7rem) clamp(3rem, 7vw, 5.5rem);
+  border-bottom:1px solid var(--line);
+  overflow:hidden;
+}
+.hero::before{
+  content:""; position:absolute; inset:0; pointer-events:none;
+  background-image:
+    linear-gradient(to right,  rgba(222,165,132,.055) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(222,165,132,.055) 1px, transparent 1px);
+  background-size:56px 56px;
+  background-position:center top;
+  -webkit-mask-image:radial-gradient(ellipse 95% 75% at 26% 26%, #000 8%, transparent 74%);
+  mask-image:radial-gradient(ellipse 95% 75% at 26% 26%, #000 8%, transparent 74%);
+}
+.hero::after{
+  content:""; position:absolute; pointer-events:none;
+  left:-14%; top:-30%;
+  width:62vw; height:62vw; max-width:760px; max-height:760px;
+  background:radial-gradient(circle, rgba(222,165,132,.11) 0%, rgba(222,165,132,0) 66%);
+}
+.hero-in{ position:relative; z-index:1 }
+
+.hero-grid{ display:grid; gap:var(--s7); align-items:start }
+.hero-grid > *{ min-width:0 }
+@media (min-width:1000px){
+  .hero-grid{ grid-template-columns:minmax(0,1.08fr) minmax(0,.92fr); gap:var(--s8) }
+}
+
+.hero h1{ margin-block:var(--s4) var(--s5) }
+.hero-sub{
+  font-family:var(--mono);
+  font-size:clamp(.95rem, .9rem + .35vw, 1.2rem);
+  line-height:1.5;
+  color:var(--rust);
+  letter-spacing:.01em;
+  max-width:44ch;
+}
+.hero-cta{ display:flex; flex-wrap:wrap; gap:var(--s3); margin-top:var(--s6) }
+.hero-meta{
+  display:flex; flex-wrap:wrap; gap:var(--s3) var(--s5);
+  margin-top:var(--s6); padding-top:var(--s5);
+  border-top:1px solid var(--line);
+}
+.hero-meta div{ display:grid; gap:.3rem }
+.hero-meta dt{ font-family:var(--mono); font-size:.68rem; letter-spacing:.16em; text-transform:uppercase; color:var(--text-ghost) }
+.hero-meta dd{ margin:0; font-family:var(--mono); font-size:.82rem; color:var(--text-mute) }
+
+/* ---------- terminal panel ---------- */
+.term{
+  background:var(--sunken);
+  border:1px solid var(--line-2);
+  border-radius:2px;
+  overflow:hidden;
+}
+.term-bar{
+  display:flex; align-items:center; gap:var(--s3);
+  padding:.6rem .75rem;
+  background:var(--panel);
+  border-bottom:1px solid var(--line);
+}
+.term-dots{ display:flex; gap:5px; flex:none }
+.term-dots i{ width:7px; height:7px; background:var(--line-2); display:block }
+.term-dots i:first-child{ background:var(--rust-dim) }
+.term-title{
+  font-family:var(--mono); font-size:.7rem;
+  letter-spacing:.1em; color:var(--text-dim);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.term-body{
+  margin:0; padding:var(--s4);
+  font-family:var(--mono);
+  font-size:clamp(.72rem, .68rem + .18vw, .82rem);
+  line-height:1.85;
+  color:var(--text-mute);
+  overflow-x:auto;
+}
+.term-body .p{ color:var(--rust); font-weight:600 }
+.term-body .k{ color:var(--text) }
+.term-body .d{ color:var(--text-ghost) }
+.term-body .ok{ color:var(--ok) }
+.term-body code{
+  font:inherit;
+  color:inherit;
+  background:none;
+  padding:0;
+}
+.term-caret{
+  display:inline-block; width:7px; height:1em;
+  background:var(--rust);
+  vertical-align:text-bottom;
+  animation:blink 1.1s steps(2,start) infinite;
+}
+@keyframes blink{ 50%{ opacity:0 } }
+@media (prefers-reduced-motion: reduce){
+  .term-caret{ animation:none }
+  *,*::before,*::after{
+    animation-duration:.001ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.001ms !important;
+  }
+}
+
+/* ---------- badge strip ---------- */
+.badges{
+  display:flex; flex-wrap:wrap; gap:var(--s3);
+  padding-block:var(--s5);
+  border-bottom:1px solid var(--line);
+}
+.badges img{ height:20px; width:auto }
+
+/* ---------- install ---------- */
+.install-grid{ display:grid; gap:var(--s5) }
+@media (min-width:860px){ .install-grid{ grid-template-columns:repeat(3,1fr) } }
+
+.cmd{
+  display:flex; align-items:stretch;
+  background:var(--sunken);
+  border:1px solid var(--line-2);
+  border-radius:2px;
+  overflow:hidden;
+}
+.cmd code{
+  flex:1 1 auto; min-width:0;
+  margin:0; padding:.85rem .9rem;
+  font-family:var(--mono);
+  font-size:clamp(.7rem, .64rem + .2vw, .8rem);
+  line-height:1.5;
+  color:var(--text);
+  background:none;
+  overflow-x:auto;
+  white-space:nowrap;
+}
+.cmd-copy{
+  flex:none;
+  display:inline-flex; align-items:center; gap:.4rem;
+  padding:0 .8rem;
+  min-height:44px;
+  background:var(--panel);
+  border:0; border-left:1px solid var(--line);
+  color:var(--text-dim);
+  font-family:var(--mono); font-size:.66rem;
+  font-weight:600; letter-spacing:.13em; text-transform:uppercase;
+  cursor:pointer;
+  transition:background-color .16s ease, color .16s ease;
+}
+.cmd-copy:hover{ background:var(--raised); color:var(--rust) }
+.cmd-copy[data-done="1"]{ color:var(--ok) }
+
+.tile{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:2px;
+  padding:var(--s5);
+  display:grid; gap:var(--s3); align-content:start;
+}
+.tile .idx{ font-family:var(--mono); font-size:.7rem; letter-spacing:.14em; color:var(--rust) }
+.tile h3{ font-size:1.05rem }
+.tile p{ color:var(--text-mute); font-size:.94rem }
+
+.note{
+  margin-top:var(--s6);
+  padding:var(--s4) var(--s5);
+  border:1px solid var(--line);
+  border-left:2px solid var(--rust);
+  background:var(--panel);
+  display:grid; gap:var(--s2);
+}
+.note p{ color:var(--text-mute); font-size:.94rem }
+.note code{
+  font-family:var(--mono); font-size:.86em;
+  color:var(--rust);
+  background:var(--sunken);
+  padding:.1em .35em; border-radius:2px;
+}
+.note-2{ border-left-color:var(--line-2) }
+
+/* ---------- feature grid (gap:1px hairline technique) ---------- */
+.fx{
+  display:grid;
+  gap:1px;
+  background:var(--line);
+  border:1px solid var(--line);
+  border-radius:2px;
+  grid-template-columns:1fr;
+}
+@media (min-width:700px){ .fx{ grid-template-columns:repeat(2,1fr) } }
+@media (min-width:1100px){ .fx{ grid-template-columns:repeat(3,1fr) } }
+/* 7 items never divide evenly into 2 or 3 columns. Letting the last one span the
+   full row avoids a phantom empty cell showing the container's hairline colour. */
+@media (min-width:700px){ .fx-item:last-child{ grid-column:1 / -1 } }
+
+.fx-item{
+  background:var(--panel);
+  padding:var(--s5);
+  display:grid; gap:var(--s3); align-content:start;
+  transition:background-color .18s ease;
+}
+.fx-item:hover{ background:var(--raised) }
+.fx-num{
+  font-family:var(--mono); font-size:.7rem;
+  letter-spacing:.16em; color:var(--rust-dim);
+}
+.fx-item h3{
+  font-family:var(--mono); font-size:.8rem;
+  letter-spacing:.14em; text-transform:uppercase;
+  color:var(--text);
+}
+.fx-item p{ color:var(--text-mute); font-size:.94rem }
+.fx-tags{ display:flex; flex-wrap:wrap; gap:.4rem; margin:0; padding:0; list-style:none }
+.fx-tags li{
+  font-family:var(--mono); font-size:.68rem;
+  letter-spacing:.06em;
+  color:var(--text-dim);
+  border:1px solid var(--line-2);
+  border-radius:2px;
+  padding:.18rem .45rem;
+}
+
+/* ---------- stories ---------- */
+.stories{ display:grid; gap:var(--s5) }
+@media (min-width:900px){ .stories{ grid-template-columns:repeat(3,1fr) } }
+
+.story{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:2px;
+  padding:var(--s5);
+  display:grid; gap:var(--s4); align-content:start;
+}
+.story-tag{
+  font-family:var(--mono); font-size:.66rem;
+  letter-spacing:.16em; text-transform:uppercase;
+  color:var(--rust);
+}
+.story h3{ font-size:1.2rem; line-height:1.2 }
+.story p{ color:var(--text-mute); font-size:.94rem }
+.story dl{ margin:0; display:grid; gap:var(--s3) }
+.story dt{
+  font-family:var(--mono); font-size:.66rem;
+  letter-spacing:.14em; text-transform:uppercase;
+  color:var(--text-ghost);
+  margin-bottom:.35rem;
+}
+.story dd{ margin:0; font-family:var(--mono); font-size:.8rem; line-height:1.6; color:var(--text-mute) }
+.story dd b{ color:var(--rust); font-weight:700 }
+
+/* ---------- comparison table ---------- */
+.cmp-scroll{ overflow-x:auto; border:1px solid var(--line); border-radius:2px }
+table{ width:100%; border-collapse:collapse; min-width:640px }
+caption{
+  text-align:left;
+  padding:var(--s4) var(--s5);
+  font-family:var(--mono); font-size:.72rem;
+  letter-spacing:.14em; text-transform:uppercase;
+  color:var(--text-dim);
+  border-bottom:1px solid var(--line);
+  background:var(--panel);
+}
+th,td{
+  padding:var(--s4) var(--s5);
+  text-align:left;
+  vertical-align:top;
+  border-bottom:1px solid var(--line);
+  font-size:.94rem;
+}
+thead th{
+  font-family:var(--mono); font-size:.7rem;
+  letter-spacing:.13em; text-transform:uppercase;
+  color:var(--text-dim);
+  background:var(--sunken);
+  font-weight:600;
+}
+thead th:last-child{ color:var(--rust) }
+tbody th{
+  font-family:var(--mono); font-size:.76rem;
+  font-weight:600; color:var(--text);
+  width:26%;
+}
+tbody td{ color:var(--text-mute) }
+tbody td:last-child{ color:var(--text) }
+tbody tr:last-child th, tbody tr:last-child td{ border-bottom:0 }
+tbody tr:hover td, tbody tr:hover th{ background:var(--panel) }
+
+/* ---------- cta strip ---------- */
+.cta-strip{
+  border:1px solid var(--line-2);
+  border-radius:2px;
+  background:var(--panel);
+  padding:var(--s7) var(--s5);
+  display:grid; gap:var(--s4); justify-items:center; text-align:center;
+}
+.cta-strip h2{ max-width:20ch }
+.cta-strip p{ color:var(--text-mute); max-width:56ch }
+.cta-strip .hero-cta{ margin-top:var(--s3); justify-content:center }
+
+/* ---------- footer ---------- */
+footer{ border-top:1px solid var(--line); padding-block:var(--s7) var(--s6); margin-top:var(--s8) }
+.foot-grid{ display:grid; gap:var(--s6) }
+@media (min-width:760px){ .foot-grid{ grid-template-columns:1.4fr 1fr 1fr } }
+
+.foot-brand{ display:grid; gap:var(--s3); align-content:start; max-width:40ch }
+.foot-brand p{ color:var(--text-dim); font-size:.9rem }
+.foot h2{
+  font-family:var(--mono); font-size:.7rem;
+  letter-spacing:.16em; text-transform:uppercase;
+  color:var(--text-ghost);
+  margin-bottom:var(--s3);
+}
+.foot ul{ list-style:none; margin:0; padding:0; display:grid; gap:.1rem }
+.foot a{
+  display:inline-block; padding:.3rem 0;
+  font-family:var(--mono); font-size:.78rem;
+  color:var(--text-mute); text-decoration:none;
+}
+.foot a:hover{ color:var(--rust) }
+
+.disclaim{
+  margin-top:var(--s7); padding-top:var(--s5);
+  border-top:1px solid var(--line);
+  display:grid; gap:var(--s2);
+}
+.disclaim p{ font-size:.84rem; color:var(--text-dim); max-width:78ch }
+.disclaim a{ color:var(--text-mute) }
+.foot-legal{
+  display:flex; flex-wrap:wrap; gap:var(--s2) var(--s5);
+  font-family:var(--mono); font-size:.7rem;
+  letter-spacing:.1em; text-transform:uppercase;
+  color:var(--text-ghost);
+}
+
+.sr-only{
+  position:absolute; width:1px; height:1px;
+  padding:0; margin:-1px; overflow:hidden;
+  clip:rect(0,0,0,0); white-space:nowrap; border:0;
+}
+</style>
+</head>
+
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<!-- ===================== NAV ===================== -->
+<header class="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="#top">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+        <path d="M12 8 L6 16 L12 24" stroke="currentColor" stroke-width="2.5" fill="none"/>
+        <path d="M20 8 L26 16 L20 24" stroke="currentColor" stroke-width="2.5" fill="none"/>
+        <rect x="14.5" y="9" width="3" height="14" fill="currentColor"/>
+      </svg>
+      <span>opencode-rust<span class="brand-sep">/</span></span>
+    </a>
+
+    <nav class="nav-links" aria-label="Primary">
+      <a href="#install">Install</a>
+      <a href="#features">Capabilities</a>
+      <a href="#engineering">Engineering</a>
+      <a href="#why-rust">Why Rust</a>
+    </nav>
+
+    <div class="nav-cta">
+      <a class="btn btn-sm" href="https://github.com/vakandi/opencode-rust">GitHub</a>
+      <a class="btn btn-sm btn-primary" href="#install">Install</a>
+    </div>
+
+    <details class="navmenu">
+      <summary aria-label="Open navigation menu">Menu</summary>
+      <ul>
+        <li><a href="#install">Install</a></li>
+        <li><a href="#features">Capabilities</a></li>
+        <li><a href="#engineering">Engineering</a></li>
+        <li><a href="#why-rust">Why Rust</a></li>
+        <li><a href="https://github.com/vakandi/opencode-rust">GitHub</a></li>
+        <li><a href="https://www.npmjs.com/package/opencode-rust">npm</a></li>
+      </ul>
+    </details>
+  </div>
+</header>
+
+<main id="main">
+<a id="top"></a>
+
+<!-- ===================== HERO ===================== -->
+<section class="hero">
+  <div class="wrap hero-in">
+    <div class="hero-grid">
+
+      <div>
+        <p class="eyebrow">Rust port &middot; MIT licensed</p>
+
+        <!-- ▼▼▼ REPLACE: LOREM_HEADLINE_PLACEHOLDER (hero <h1>) ▼▼▼ -->
+        <h1>LOREM_HEADLINE_PLACEHOLDER</h1>
+        <!-- ▲▲▲ REPLACE ▲▲▲ -->
+
+        <!-- ▼▼▼ REPLACE: LOREM_SUBHEAD_PLACEHOLDER (hero subhead) ▼▼▼ -->
+        <p class="hero-sub">LOREM_SUBHEAD_PLACEHOLDER</p>
+        <!-- ▲▲▲ REPLACE ▲▲▲ -->
+
+        <div class="hero-cta">
+          <a class="btn btn-primary" href="#install">
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.6">
+              <path d="M6 3L11 8L6 13" stroke-linecap="square"/>
+            </svg>
+            Get <code style="font:inherit">opr</code>
+          </a>
+          <a class="btn" href="https://github.com/vakandi/opencode-rust">Source</a>
+          <a class="btn" href="#why-rust">Why Rust</a>
+        </div>
+
+        <dl class="hero-meta">
+          <div><dt>Command</dt><dd>opr</dd></div>
+          <div><dt>Binary</dt><dd>opencode</dd></div>
+          <div><dt>Runtime</dt><dd>Node 18+</dd></div>
+          <div><dt>Container</dt><dd>not required</dd></div>
+        </dl>
+      </div>
+
+      <figure class="term" style="margin:0">
+        <figcaption class="term-bar">
+          <span class="term-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="term-title">opr &mdash; session tty</span>
+        </figcaption>
+        <pre class="term-body"><code><span class="p">$</span> <span class="k">opr</span>
+<span class="d"># entry command; binary is `opencode`</span>
+
+<span class="p">&gt;</span> audit the storage layer for schema drift
+
+<span class="k">  ▸</span> read crates/opencode-storage/src/schema.rs
+<span class="k">  ▸</span> grep  ALL_MIGRATIONS
+<span class="k">  ▸</span> tool  22 built-ins + live MCP in one registry
+
+<span class="ok">  ✓</span> migrations replay on every connect
+<span class="ok">  ✓</span> history spilled to SQLite &mdash; <span class="d">sessions, messages, parts</span>
+
+<span class="p">&gt;</span> <span class="term-caret" aria-hidden="true"></span></code></pre>
+      </figure>
+
+    </div>
+  </div>
+</section>
+
+<!-- ===================== BADGES ===================== -->
+<div class="wrap">
+  <div class="badges">
+    <img src="https://img.shields.io/badge/core-Rust-DEA584?style=flat-square" alt="Core language: Rust" height="20" decoding="async">
+    <img src="https://img.shields.io/badge/crates-21-informational?style=flat-square" alt="21 crates" height="20" decoding="async">
+    <img src="https://img.shields.io/badge/tests-571_passing-DEA584?style=flat-square" alt="571 tests passing" height="20" decoding="async">
+    <img src="https://img.shields.io/badge/no_Docker_no_container-DEA584?style=flat-square" alt="No Docker, no container runtime" height="20" decoding="async">
+    <img src="https://img.shields.io/badge/license-MIT-10B981?style=flat-square" alt="License: MIT" height="20" decoding="async">
+  </div>
+</div>
+
+<!-- ===================== INSTALL ===================== -->
+<section id="install">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">01 / Install</p>
+      <h2>Three surfaces, one engine</h2>
+      <!-- ▼▼▼ REPLACE: LOREM_BODY_PLACEHOLDER (install lede) ▼▼▼ -->
+      <p class="lede">LOREM_BODY_PLACEHOLDER</p>
+      <!-- ▲▲▲ REPLACE ▲▲▲ -->
+    </div>
+
+    <div class="install-grid">
+
+      <article class="tile">
+        <p class="idx">01 / NPM</p>
+        <h3>Node launcher</h3>
+        <div class="cmd">
+          <code id="cmd-npm">npm install -g opencode-rust</code>
+          <button class="cmd-copy js-only" type="button" data-target="cmd-npm" aria-label="Copy npm install command">
+            <span data-label>Copy</span>
+          </button>
+        </div>
+        <p>Requires Node 18+. <code style="font-family:var(--mono);font-size:.86em;color:var(--rust)">opr</code> is a dispatching launcher here.</p>
+        <p><a href="https://www.npmjs.com/package/opencode-rust">opencode-rust on npm</a></p>
+      </article>
+
+      <article class="tile">
+        <p class="idx">02 / HOMEBREW</p>
+        <h3>Homebrew tap</h3>
+        <div class="cmd">
+          <code id="cmd-brew">brew install vakandi/tap/opencode-rust</code>
+          <button class="cmd-copy js-only" type="button" data-target="cmd-brew" aria-label="Copy Homebrew install command">
+            <span data-label>Copy</span>
+          </button>
+        </div>
+        <p>Builds from source with <code style="font-family:var(--mono);font-size:.86em;color:var(--rust)">cargo install</code>, so the first install compiles.</p>
+      </article>
+
+      <article class="tile">
+        <p class="idx">03 / SOURCE</p>
+        <h3>Clone &amp; build</h3>
+        <div class="cmd">
+          <code id="cmd-git">git clone https://github.com/vakandi/opencode-rust &amp;&amp; ./install.sh</code>
+          <button class="cmd-copy js-only" type="button" data-target="cmd-git" aria-label="Copy git clone and install command">
+            <span data-label>Copy</span>
+          </button>
+        </div>
+        <p>Fingerprint-stamped: an unchanged tree skips the rebuild. <code style="font-family:var(--mono);font-size:.86em;color:var(--rust)">--force</code> defeats the stamp.</p>
+      </article>
+
+    </div>
+
+    <div class="note">
+      <p class="mono">BEFORE FIRST RUN</p>
+      <p>Set a provider key, for example <code>export ANTHROPIC_API_KEY=...</code></p>
+    </div>
+
+    <div class="note note-2">
+      <p class="mono">SURFACE NOTE</p>
+      <p><code>opr</code> is not identical across installers. Through npm it is a dispatcher, so <code>opr --some-flag</code> becomes <code>opencode tui --some-flag</code>. Through Homebrew it is a plain symlink, so <code>opencode tui --some-flag</code> is rejected. Both behaviours are intentional.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== FEATURES ===================== -->
+<section id="features">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">02 / Capabilities</p>
+      <h2>What ships in the box</h2>
+      <!-- ▼▼▼ REPLACE: LOREM_BODY_PLACEHOLDER (features lede) ▼▼▼ -->
+      <p class="lede">LOREM_BODY_PLACEHOLDER</p>
+      <!-- ▲▲▲ REPLACE ▲▲▲ -->
+    </div>
+
+    <div class="fx">
+
+      <article class="fx-item">
+        <p class="fx-num">01</p>
+        <h3>Interaction modes</h3>
+        <p>Five surfaces over the same engine.</p>
+        <ul class="fx-tags">
+          <li>TUI (default)</li><li>run</li><li>HTTP server</li><li>Web</li><li>ACP</li>
+        </ul>
+      </article>
+
+      <article class="fx-item">
+        <p class="fx-num">02</p>
+        <h3>Sessions</h3>
+        <p>Full session lifecycle with lineage preserved.</p>
+        <ul class="fx-tags">
+          <li>create</li><li>continue</li><li>fork</li><li>import / export</li><li>parent &amp; child links</li>
+        </ul>
+      </article>
+
+      <article class="fx-item">
+        <p class="fx-num">03</p>
+        <h3>Tool system</h3>
+        <p>Built-ins and live MCP tools resolve through one registry.</p>
+        <ul class="fx-tags">
+          <li>22 built-in tools</li><li>live MCP tools</li>
+        </ul>
+      </article>
+
+      <article class="fx-item">
+        <p class="fx-num">04</p>
+        <h3>Permissions</h3>
+        <p>Rules scoped per path, evaluated in order.</p>
+        <ul class="fx-tags">
+          <li>per-path scoping</li><li>last matching rule wins</li>
+        </ul>
+      </article>
+
+      <article class="fx-item">
+        <p class="fx-num">05</p>
+        <h3>Providers</h3>
+        <p>Multi-provider calls with reasoning control.</p>
+        <ul class="fx-tags">
+          <li>routing</li><li>reasoning-effort control</li><li>streaming tool calls</li>
+        </ul>
+      </article>
+
+      <article class="fx-item">
+        <p class="fx-num">06</p>
+        <h3>Extensibility</h3>
+        <p>Bring your own processes; they join the tool registry.</p>
+        <ul class="fx-tags">
+          <li>TypeScript plugin bridge</li><li>MCP stdio + HTTP</li><li>LSP</li>
+        </ul>
+      </article>
+
+      <article class="fx-item">
+        <p class="fx-num">07</p>
+        <h3>Storage</h3>
+        <p>Conversation state on disk, not in memory.</p>
+        <ul class="fx-tags">
+          <li>SQLite</li><li>sessions</li><li>messages</li><li>parts</li>
+        </ul>
+      </article>
+
+    </div>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== STORIES ===================== -->
+<section id="engineering">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">03 / Engineering</p>
+      <h2>Three defects worth reading about</h2>
+      <!-- ▼▼▼ REPLACE: LOREM_BODY_PLACEHOLDER (engineering lede) ▼▼▼ -->
+      <p class="lede">LOREM_BODY_PLACEHOLDER</p>
+      <!-- ▲▲▲ REPLACE ▲▲▲ -->
+    </div>
+
+    <div class="stories">
+
+      <article class="story">
+        <p class="story-tag">01 / run</p>
+        <h3><code style="font-family:var(--mono);color:var(--rust)">run</code> does not abandon its work</h3>
+        <p>It used to make a single provider call and never execute a tool, so a spawned subagent died with the process.</p>
+        <p>It now drives the real session loop, then holds the process open until four things settle.</p>
+        <dl>
+          <dt>Drains on</dt>
+          <dd>the turn &rarr; <code style="color:var(--rust)">session.idle</code> &rarr; child sessions quiet &rarr; background-task ledger</dd>
+          <dt>Failure mode</dt>
+          <dd><b>fails open</b> &mdash; absent db, missing file, corrupt JSON or a stale entry all mean done. Never a hang.</dd>
+        </dl>
+      </article>
+
+      <article class="story">
+        <p class="story-tag">02 / mcp</p>
+        <h3>MCP actually works</h3>
+        <p>Three separate defects, each of which silently produced a &ldquo;successful&rdquo; boot exposing zero tools.</p>
+        <dl>
+          <dt>Framing</dt>
+          <dd>wrote LSP <code style="color:var(--rust)">Content-Length</code> instead of newline-delimited JSON &mdash; every server timed out</dd>
+          <dt>Config</dt>
+          <dd>an enum whose <code style="color:var(--rust)">{enabled}</code> toggle variant shadowed the full server variant, discarding every definition</dd>
+          <dt>Boot</dt>
+          <dd>sequential and unbounded</dd>
+          <dt>After</dt>
+          <dd><b>3 servers in ~4s &rarr; 77 tools</b> reaching agents</dd>
+        </dl>
+      </article>
+
+      <article class="story">
+        <p class="story-tag">03 / stream</p>
+        <h3>Streaming actually streams</h3>
+        <p>The TUI SSE listener dropped early deltas and triggered a full transcript refetch per delta.</p>
+        <dl>
+          <dt>Before</dt>
+          <dd><b>~15 fetches per second</b> against the transcript endpoint</dd>
+          <dt>After</dt>
+          <dd>deltas are buffered and replayed; an applied delta triggers a <b>redraw</b> instead of a refetch</dd>
+        </dl>
+      </article>
+
+    </div>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== WHY RUST ===================== -->
+<section id="why-rust">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">04 / Rationale</p>
+      <h2>Why this exists in Rust</h2>
+      <!-- ▼▼▼ REPLACE: LOREM_BODY_PLACEHOLDER (why-rust lede) ▼▼▼ -->
+      <p class="lede">LOREM_BODY_PLACEHOLDER</p>
+      <!-- ▲▲▲ REPLACE ▲▲▲ -->
+    </div>
+
+    <div class="cmp-scroll">
+      <table>
+        <caption>TypeScript engine &rarr; Rust port</caption>
+        <thead>
+          <tr>
+            <th scope="col">Concern</th>
+            <th scope="col">TypeScript engine</th>
+            <th scope="col">opencode-rust</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">Conversation history</th>
+            <td>Held in RAM</td>
+            <td>Spilled to SQLite</td>
+          </tr>
+          <tr>
+            <th scope="row">Tool schemas</th>
+            <td>Re-derived on every LLM step</td>
+            <td>Cached per (model, tool-set)</td>
+          </tr>
+          <tr>
+            <th scope="row">Request bodies</th>
+            <td>Buffered whole</td>
+            <td>Streamed</td>
+          </tr>
+          <tr>
+            <th scope="row">Instance state <span style="color:var(--text-ghost)">(MCP / LSP / plugins)</span></th>
+            <td>Per-directory, unbounded, never evicted</td>
+            <td>Pooled by config hash, LRU + TTL eviction</td>
+          </tr>
+          <tr>
+            <th scope="row">Containment</th>
+            <td>A Docker runtime existed to hold the leak</td>
+            <td>No container, no cgroup, no leak to contain</td>
+          </tr>
+          <tr>
+            <th scope="row">Heavy run, 5 teams &times; 5 agents</th>
+            <td>Pinned a MacBook Pro M5 at 99% CPU &mdash; the machine became unusable</td>
+            <td>That was the limit, not the workload</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== CTA ===================== -->
+<section id="get-started">
+  <div class="wrap">
+    <div class="cta-strip">
+      <p class="eyebrow" style="justify-content:center">Get started</p>
+      <h2>Run it locally in under a minute</h2>
+      <p>Node 18+, one provider key, no container runtime.</p>
+      <div class="hero-cta">
+        <a class="btn btn-primary" href="https://www.npmjs.com/package/opencode-rust">Install from npm</a>
+        <a class="btn" href="https://github.com/vakandi/opencode-rust">Browse the source</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ===================== FOOTER ===================== -->
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+
+      <div class="foot-brand">
+        <a class="brand" href="#top">
+          <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+            <path d="M12 8 L6 16 L12 24" stroke="currentColor" stroke-width="2.5" fill="none"/>
+            <path d="M20 8 L26 16 L20 24" stroke="currentColor" stroke-width="2.5" fill="none"/>
+            <rect x="14.5" y="9" width="3" height="14" fill="currentColor"/>
+          </svg>
+          <span>opencode-rust</span>
+        </a>
+        <p>A Rust port of the OpenCode AI coding agent. Built and released under the MIT License.</p>
+      </div>
+
+      <nav class="foot" aria-label="Project">
+        <h2>Project</h2>
+        <ul>
+          <li><a href="https://github.com/vakandi/opencode-rust">Repository</a></li>
+          <li><a href="https://github.com/vakandi/opencode-rust/blob/main/LICENSE">MIT License</a></li>
+          <li><a href="https://github.com/vakandi/opencode-rust/issues">Issues</a></li>
+          <li><a href="https://github.com/anomalyco/opencode">Upstream OpenCode</a></li>
+        </ul>
+      </nav>
+
+      <nav class="foot" aria-label="Distribute">
+        <h2>Distribute</h2>
+        <ul>
+          <li><a href="https://www.npmjs.com/package/opencode-rust">npm</a></li>
+          <li><a href="https://github.com/vakandi/opencode-rust#install">Homebrew tap</a></li>
+          <li><a href="https://github.com/vakandi/opencode-rust">From source</a></li>
+        </ul>
+      </nav>
+
+    </div>
+
+    <div class="disclaim">
+      <p><strong>Not affiliated with the OpenCode team.</strong> This is an independent community port and is not endorsed by, sponsored by, or associated with the maintainers of <a href="https://github.com/anomalyco/opencode">OpenCode</a>. Trademarks remain the property of their respective owners.</p>
+      <p class="foot-legal">
+        <span>MIT License</span>
+        <span>21 crates</span>
+        <span>571 tests</span>
+        <span>No container runtime</span>
+      </p>
+    </div>
+  </div>
+</footer>
+
+<p class="sr-only" role="status" aria-live="polite" id="copy-status"></p>
+
+<script>
+(function () {
+  "use strict";
+
+  var status = document.getElementById("copy-status");
+
+  function announce(text) {
+    if (status) { status.textContent = text; }
+  }
+
+  /* Fallback for non-secure contexts / older engines, where the async
+     Clipboard API is unavailable. Kept synchronous and dependency-free. */
+  function legacyCopy(text) {
+    var ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.top = "-1000px";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+
+  function reset(btn, label) {
+    btn.removeAttribute("data-done");
+    var slot = btn.querySelector("[data-label]");
+    if (slot) { slot.textContent = label; }
+  }
+
+  document.querySelectorAll(".cmd-copy").forEach(function (btn) {
+    var code = document.getElementById(btn.getAttribute("data-target"));
+    if (!code) { return; }
+    var text = code.textContent.trim();
+    var idle = "Copy";
+
+    btn.addEventListener("click", function () {
+      function done() {
+        btn.setAttribute("data-done", "1");
+        var slot = btn.querySelector("[data-label]");
+        if (slot) { slot.textContent = "Copied"; }
+        btn.setAttribute("aria-label", "Copied: " + text);
+        announce("Copied to clipboard: " + text);
+        window.setTimeout(function () { reset(btn, idle); }, 1800);
+      }
+
+      function failed() {
+        announce("Copy failed. The command text is selectable — copy it manually.");
+      }
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(function () {
+          if (legacyCopy(text)) { done(); } else { failed(); }
+        });
+      } else if (legacyCopy(text)) {
+        done();
+      } else {
+        failed();
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>
