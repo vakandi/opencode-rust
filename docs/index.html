@@ -311,6 +311,18 @@ section{ padding-block:var(--s8) }
 }
 .hero-in{ position:relative; z-index:1 }
 
+.hero-banner{
+  position:relative; z-index:1;
+  max-width:1280px; margin:0 auto; padding:var(--s7) var(--s5) 0;
+}
+.hero-banner img{
+  display:block; width:100%; height:auto;
+  border:1px solid var(--line); border-radius:2px;
+}
+@media (min-width:1000px){
+  .hero-banner{ padding:var(--s8) var(--s5) 0 }
+}
+
 .hero-grid{ display:grid; gap:var(--s7); align-items:start }
 .hero-grid > *{ min-width:0 }
 @media (min-width:1000px){
@@ -671,6 +683,12 @@ footer{ border-top:1px solid var(--line); padding-block:var(--s7) var(--s6); mar
 <main id="main">
 <a id="top"></a>
 
+<!-- ===================== HERO BANNER ===================== -->
+<figure class="hero-banner">
+  <img src="https://raw.githubusercontent.com/vakandi/opencode-rust/main/assets/banner.png"
+       alt="OpenCode in Rust — by @vakandi. The open source AI coding agent, rebuilt as a native CLI, TUI and HTTP server.">
+</figure>
+
 <!-- ===================== HERO ===================== -->
 <section class="hero">
   <div class="wrap hero-in">
@@ -679,13 +697,9 @@ footer{ border-top:1px solid var(--line); padding-block:var(--s7) var(--s6); mar
       <div>
         <p class="eyebrow">Rust port &middot; MIT licensed</p>
 
-        <!-- ▼▼▼ REPLACE: LOREM_HEADLINE_PLACEHOLDER (hero <h1>) ▼▼▼ -->
-        <h1>LOREM_HEADLINE_PLACEHOLDER</h1>
-        <!-- ▲▲▲ REPLACE ▲▲▲ -->
+        <h1>OpenCode in Rust</h1>
 
-        <!-- ▼▼▼ REPLACE: LOREM_SUBHEAD_PLACEHOLDER (hero subhead) ▼▼▼ -->
-        <p class="hero-sub">LOREM_SUBHEAD_PLACEHOLDER</p>
-        <!-- ▲▲▲ REPLACE ▲▲▲ -->
+        <p class="hero-sub">The open source AI coding agent, rebuilt as a native binary. Terminal UI, CLI and HTTP server — no Docker, no runtime, no container to contain.</p>
 
         <div class="hero-cta">
           <a class="btn btn-primary" href="#install">
@@ -747,9 +761,7 @@ footer{ border-top:1px solid var(--line); padding-block:var(--s7) var(--s6); mar
     <div class="sec-head">
       <p class="eyebrow">01 / Install</p>
       <h2>Three surfaces, one engine</h2>
-      <!-- ▼▼▼ REPLACE: LOREM_BODY_PLACEHOLDER (install lede) ▼▼▼ -->
-      <p class="lede">LOREM_BODY_PLACEHOLDER</p>
-      <!-- ▲▲▲ REPLACE ▲▲▲ -->
+      <p class="lede">Twenty-two built-in tools and every live MCP tool land in one registry, resolved per turn. Permissions are scoped per path, last matching rule wins.</p>
     </div>
 
     <div class="install-grid">
@@ -813,9 +825,7 @@ footer{ border-top:1px solid var(--line); padding-block:var(--s7) var(--s6); mar
     <div class="sec-head">
       <p class="eyebrow">02 / Capabilities</p>
       <h2>What ships in the box</h2>
-      <!-- ▼▼▼ REPLACE: LOREM_BODY_PLACEHOLDER (features lede) ▼▼▼ -->
-      <p class="lede">LOREM_BODY_PLACEHOLDER</p>
-      <!-- ▲▲▲ REPLACE ▲▲▲ -->
+      <p class="lede">The original engine kept conversation history in RAM, re-derived the full tool schema on every step, and never evicted per-directory state. Docker existed to contain that leak. Five teams of five agents pinned a MacBook Pro M5 at 99% CPU — the container was the limit, not the workload.</p>
     </div>
 
     <div class="fx">
@@ -895,9 +905,7 @@ footer{ border-top:1px solid var(--line); padding-block:var(--s7) var(--s6); mar
     <div class="sec-head">
       <p class="eyebrow">03 / Engineering</p>
       <h2>Three defects worth reading about</h2>
-      <!-- ▼▼▼ REPLACE: LOREM_BODY_PLACEHOLDER (engineering lede) ▼▼▼ -->
-      <p class="lede">LOREM_BODY_PLACEHOLDER</p>
-      <!-- ▲▲▲ REPLACE ▲▲▲ -->
+      <p class="lede">Rust replaces the runtime, not the features. Conversation history spills to SQLite, request bodies stream, tool schemas are cached per model and tool-set, and instance state is pooled with LRU and TTL eviction.</p>
     </div>
 
     <div class="stories">
@@ -955,9 +963,7 @@ footer{ border-top:1px solid var(--line); padding-block:var(--s7) var(--s6); mar
     <div class="sec-head">
       <p class="eyebrow">04 / Rationale</p>
       <h2>Why this exists in Rust</h2>
-      <!-- ▼▼▼ REPLACE: LOREM_BODY_PLACEHOLDER (why-rust lede) ▼▼▼ -->
-      <p class="lede">LOREM_BODY_PLACEHOLDER</p>
-      <!-- ▲▲▲ REPLACE ▲▲▲ -->
+      <p class="lede">The container was never the fix. Conversation history spills to SQLite, request bodies stream, tool schemas are cached per model and tool-set, and instance state is pooled with LRU and TTL eviction — so there is nothing left to contain.</p>
     </div>
 
     <div class="cmp-scroll">
