@@ -1,7 +1,7 @@
 {
-  "name": "opencoderust",
+  "name": "opr",
   "version": "0.1.0",
-  "description": "Alias for opencode-rust — the open source AI coding agent, in Rust",
+  "description": "The open source AI coding agent, in Rust — short alias for opencode-rust",
   "homepage": "https://github.com/vakandi/opencode-rust",
   "bugs": {
     "url": "https://github.com/vakandi/opencode-rust/issues"
@@ -19,10 +19,10 @@
     "bin/opr.js",
     "README.md"
   ],
-  "dependencies": {
-    "opencode-rust": "0.1.0"
-  },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "opencode-rust": "0.1.0"
   }
 }

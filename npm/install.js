@@ -84,6 +84,20 @@ function platformSuffix() {
   return null;
 }
 
+// install.js sits at the package root, so __dirname is already the root — but npm may
+// hoist the platform package into an ancestor's node_modules. Walking up covers both.
+function nodeModulesDirs() {
+  const out = [];
+  let dir = __dirname;
+  for (let i = 0; i < 6; i += 1) {
+    out.push(path.join(dir, 'node_modules'));
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return out;
+}
+
 function candidatePaths(name) {
   const out = [];
 
@@ -126,6 +140,32 @@ function findBinary() {
   }
 
   return null;
+}
+
+// npm's staging flow strips `os`/`cpu` from the published manifest, which makes every
+// platform package look installable everywhere. Without this, a Linux or Windows machine
+// would keep a macOS binary in node_modules and could select it. Removing the mismatched
+// packages is what makes "one binary per machine" true in practice rather than by request.
+function pruneForeignBinaries() {
+  const wanted = platformSuffix();
+  if (!wanted) return [];
+  if (process.env.OPR_NO_PRUNE) return [];
+
+  const removed = [];
+  for (const p of nodeModulesDirs()) {
+    if (!fs.existsSync(p)) continue;
+    for (const entry of fs.readdirSync(p)) {
+      if (!entry.startsWith('opencode-rust-')) continue;
+      if (entry === wanted || entry === 'opencode-rust') continue;
+      try {
+        fs.rmSync(path.join(p, entry), { recursive: true, force: true });
+        removed.push(entry);
+      } catch {
+        /* read-only tree: harmless, the launcher still picks the right one */
+      }
+    }
+  }
+  return removed;
 }
 
 function writeResolved(binPath) {
@@ -194,6 +234,11 @@ function main() {
     try {
       fs.chmodSync(binPath, 0o755);
     } catch { /* best effort */ }
+  }
+
+  const pruned = pruneForeignBinaries();
+  if (pruned.length) {
+    ok(`pruned ${c.gray(pruned.join(', '))} ${c.gray(`(wrong platform, ${target})`)}`);
   }
 
   writeResolved(binPath);

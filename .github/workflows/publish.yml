@@ -41,13 +41,13 @@ jobs:
         working-directory: npm
         run: npm publish --provenance --access public
 
-      - name: Publish the opencoderust alias
-        working-directory: npm/alias/opencoderust
+      - name: Publish the opr alias
+        working-directory: npm/alias/opr
         run: npm publish --provenance --access public
 
       - name: Confirm all three are on the registry
         run: |
-          for p in "opencode-rust-darwin-arm64@0.1.0" "opencode-rust@0.1.0" "opencoderust@0.1.0"; do
+          for p in "opencode-rust-darwin-arm64@0.1.0" "opencode-rust@0.1.0" "opr@0.1.0"; do
             printf '%s -> ' "$p"
             npm view "$p" version
           done
