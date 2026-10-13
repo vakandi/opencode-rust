@@ -22,6 +22,29 @@
 
 ## Installation
 
+### npm — Linux, macOS, Windows
+
+```bash
+npm install -g opencode-rust
+```
+
+`opr` ships as a Node launcher, so this is the only path that works on Windows. The installer
+never compiles: prebuilt binaries arrive as platform-scoped packages
+(`@opencode-rust/darwin-arm64`, `@opencode-rust/linux-x64-gnu`, …) and npm skips the ones your
+machine does not need. If no binary matches your platform the installer says so and points you
+here — it exits cleanly rather than failing your install.
+
+### Homebrew — macOS and Linux
+
+```bash
+brew install vakandi/tap/opencode-rust
+```
+
+Installs `opencode` and links `opr` to it. This formula builds from source, so the first install
+pulls a Rust toolchain as a build dependency.
+
+### From source
+
 ```bash
 git clone https://github.com/vakandi/opencode-rust.git
 cd opencode-rust
@@ -36,6 +59,11 @@ opr                                   # interactive TUI
 opr run "check this repo for risks"    # one prompt, runs to completion
 opr serve --port 3000                 # HTTP server
 ```
+
+> **`opr` behaves slightly differently per install.** Through npm it is a dispatching script, so
+> `opr --some-flag` becomes `opencode tui --some-flag`. Through Homebrew it is a plain symlink, so
+> the same command becomes `opencode --some-flag` and is rejected — name the subcommand instead
+> (`opr tui --some-flag`).
 
 ### Named-agent shortcuts
 

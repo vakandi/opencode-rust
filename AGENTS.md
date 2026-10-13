@@ -1,8 +1,8 @@
 # AGENTS.md — OpenCodeRust
 
 A standalone Rust port of the [opencode](https://github.com/anomalyco/opencode) engine
-(CLI + TUI + HTTP server). It is **not** a subworker component and has no runtime
-dependency on any agent fleet — do not reintroduce that framing from `README.md`.
+(CLI + TUI + HTTP server): a harness for running local AI agents. It has no runtime
+dependency on any other system and no reference to one.
 
 The CLI binary is named **`opencode`**, but the crate is `opencode-cli` — that mismatch
 breaks every command guess. The npm/brew entry point is **`opr`**.
@@ -166,8 +166,32 @@ reverse channel is `sendNotification` correlated by `params.requestId`.
 post-mortems behind most of the invariants above. `USER_GUIDE.md` is user-facing and still calls
 the project "RustingOpenCode (ROCode)".
 
-Verify against the code: `README.md` documents `start.sh` / `stop.sh`, which do not exist (only
-`start-rust-api.sh` and `proxy.sh` do), and quotes a test count that has since drifted.
+Verify against the code before trusting prose: `README.md` was rewritten against verified
+behaviour once already, and `docs/` was not rewritten with it — `docs/README.md` still calls the
+project "RustingOpenCode (ROCode)" at a pinned version, and the per-crate docs predate the
+packaging work below.
+
+## Distribution
+
+Three surfaces, and they are **not** interchangeable:
+
+- **npm** — `npm/package.json` publishes `bin/opr.js`, a Node launcher. Node, not bash, because
+  `install.sh` writes a bash `case` script that Windows cannot execute; rewriting it in Node is
+  what made Windows possible. `chalk` is pinned to `^4` because chalk 5 is ESM-only and would
+  break the CJS launcher.
+- **Homebrew** — `npm/homebrew/opencode-rust.rb`, builds from source via `cargo install`. The
+  class name must match the filename or Homebrew will not load it.
+- **Source** — `./install.sh`, fingerprint-stamped so an unchanged tree skips the rebuild.
+
+`opr` means different things per surface: npm ships a **dispatcher** (`opr --flag` →
+`opencode tui --flag`), Homebrew ships a **symlink** (`opr --flag` → `opencode --flag`, rejected).
+Both are intentional. Two real bugs came from assuming otherwise: `install.js` resolved the
+binary at `__dirname/../node_modules`, which is outside the package because `install.js` sits at
+the package root unlike `bin/opr.js`; and both `opr.js` and `install.js` probed the binary with
+`--version`, but the clap definition has only a `version` subcommand, so the probe failed on
+every install.
+
+`opencode version` works. `opencode --version` does not.
 
 ## Secrets
 
