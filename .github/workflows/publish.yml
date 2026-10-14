@@ -20,7 +20,11 @@ on:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    # macos-14 is Apple Silicon. `opencode-rust-darwin-arm64` carries `os: [darwin]` /
+    # `cpu: [arm64]`, and a macOS binary needs the macOS SDK, so it cannot be produced on
+    # the ubuntu runner. Publishing there shipped a 340-byte tarball containing only
+    # package.json.
+    runs-on: macos-14
     permissions:
       contents: read
       id-token: write # required for the npm OIDC exchange
@@ -31,6 +35,28 @@ jobs:
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build the native binary
+        run: |
+          cargo build --release --bin opencode
+          mkdir -p npm/platform/opencode-rust-darwin-arm64/bin
+          cp target/release/opencode npm/platform/opencode-rust-darwin-arm64/bin/opencode
+
+      # `npm/platform/*/bin/` is gitignored, so a fresh checkout has no binary and
+      # `files: ["bin/opencode"]` silently matches nothing. Fail here rather than
+      # publish an empty package again.
+      - name: Fail if the binary is missing from the tarball
+        working-directory: npm/platform/opencode-rust-darwin-arm64
+        run: |
+          test -s bin/opencode || { echo "::error::bin/opencode is missing or empty"; exit 1; }
+          npm pack --dry-run --json | node -e '
+            const t = JSON.parse(require("fs").readFileSync(0,"utf8"))[0];
+            const n = t.files.length;
+            console.log("tarball files:", n);
+            if (n < 2) { console.error("::error::tarball has no binary, only package.json"); process.exit(1); }
+          '
 
       - name: Publish the native binary
         id: binary
