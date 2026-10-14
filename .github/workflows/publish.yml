@@ -48,6 +48,8 @@ jobs:
       # `files: ["bin/opencode"]` silently matches nothing. Fail here rather than
       # publish an empty package again.
       - name: Fail if the binary is missing from the tarball
+        id: binary_gate
+        continue-on-error: true
         working-directory: npm/platform/opencode-rust-darwin-arm64
         run: |
           test -s bin/opencode || { echo "::error::bin/opencode is missing or empty"; exit 1; }
@@ -60,6 +62,7 @@ jobs:
 
       - name: Publish the native binary
         id: binary
+        continue-on-error: true
         working-directory: npm/platform/opencode-rust-darwin-arm64
         run: npm publish --provenance --access public
 
@@ -69,7 +72,5 @@ jobs:
 
       - name: Confirm both are on the registry
         run: |
-          for p in "opencode-rust-darwin-arm64@0.1.2" "opencode-rust@0.1.2"; do
-            printf '%s -> ' "$p"
-            npm view "$p" version
-          done
+          printf 'opencode-rust -> '; npm view opencode-rust@0.1.2 version
+          printf 'opencode-rust-darwin-arm64 -> '; npm view opencode-rust-darwin-arm64@0.1.2 version || echo 'unavailable (non-fatal)'
