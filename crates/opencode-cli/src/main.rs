@@ -571,11 +571,13 @@ enum GithubCommands {
 }
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // `fmt::init()` does NOT honour RUST_LOG, which left the proxy's rotation decisions
-    // invisible while still happening. These are the lines that say which IP a session
-    // egresses from.
+    // Silent unless asked. The plugin loader alone printed ~15 lines before the
+    // banner on every `run`, burying the assistant text the user came for.
+// `fmt::init()` does NOT honour RUST_LOG, which left the proxy's rotation
+    // decisions invisible while still happening, so RUST_LOG stays the opt-in:
+// it is what surfaces which IP a session egresses from.
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn"));
     tracing_subscriber::fmt().with_env_filter(filter).init();
 
     let cli = Cli::parse();
@@ -911,12 +913,26 @@ async fn resolve_requested_session(
     Ok(selected)
 }
 
+/// A client that never proxies loopback.
+///
+/// The engine exports `HTTP_PROXY` for the residential pool, and whatever launched this
+/// process may have exported its own. Either way the readiness probe for `127.0.0.1` was
+/// tunnelled through that proxy, failed in microseconds, and the TUI sat on a black
+/// screen for the full timeout while `/health` answered 200 to curl.
+fn loopback_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .no_proxy()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new())
+}
+
 async fn wait_for_server_ready(
     base_url: &str,
     timeout: Duration,
     server_handle: Option<&mut tokio::task::JoinHandle<anyhow::Result<()>>>,
 ) -> anyhow::Result<()> {
-    let client = reqwest::Client::new();
+    let client = loopback_client();
     let start = tokio::time::Instant::now();
     let health = server_url(base_url, "/health");
     let mut server_handle = server_handle;
@@ -1616,6 +1632,12 @@ async fn run_chat_session(
     let current_dir = std::env::current_dir()?;
     let config = load_config(&current_dir)?;
 
+    // Must precede setup_providers(): a client built before the proxy port is registered
+    // snapshots an environment with no engine proxy, so every session egresses through
+    // whatever ambient proxy the shell exported instead of this machine's residential
+    // pool — which is the whole difference between the CLI and `serve`.
+    opencode_server::start_native_proxy().await;
+
     let provider_registry = Arc::new(setup_providers(&config).await?);
 
     if provider_registry.list().is_empty() {
@@ -1645,18 +1667,32 @@ async fn run_chat_session(
 
     let agent_registry = AgentRegistry::from_config(&config);
     let mut agent_info = agent_registry
-        .get(&agent_name)
+        .get_resolved(&agent_name)
         .cloned()
         .unwrap_or_else(|| AgentInfo::build());
 
+    // No builtin names a model, so without this a bare `run` resolved to `build` and fell
+    // through to a hardcoded Anthropic pair that no installation configures.
+    if agent_info.model.is_none() && model.is_none() {
+        if let Some(defaulted) = agent_registry.default_with_model() {
+            agent_info = defaulted.clone();
+        }
+    }
+
     if let Some(ref model_id) = model {
-        let provider_id = provider.clone().unwrap_or_else(|| {
-            if model_id.starts_with("claude") {
-                "anthropic".to_string()
-            } else {
-                "openai".to_string()
-            }
-        });
+        let provider_id = match provider.clone() {
+            Some(id) => id,
+            None => provider_registry
+                .find_model(model_id)
+                .map(|(id, _)| id)
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "model '{model_id}' is not offered by any configured provider. \
+                         Pass it as <provider>/<model>, or list what is configured with \
+                         `opencode models`."
+                    )
+                })?,
+        };
         agent_info = agent_info.with_model(model_id.clone(), provider_id);
     }
 
@@ -1676,9 +1712,10 @@ async fn run_chat_session(
 
     let (model_api_id, model_provider_id) = match &agent_info.model {
         Some(m) => (m.model_id.clone(), m.provider_id.clone()),
-        None => (
-            "claude-sonnet-4-20250514".to_string(),
-            "anthropic".to_string(),
+        None => anyhow::bail!(
+            "agent '{}' names no model. Pass --model <provider>/<model>, or give an agent \\
+             a model in its config (e.g. `model: opencode/space-bunny-free`).",
+            agent_info.name
         ),
     };
     let model_prompt = SystemPrompt::for_model(&model_api_id);
@@ -5294,19 +5331,25 @@ async fn generate_agent_response(
     let tool_registry = Arc::new(create_default_registry().await);
     let agent_registry = AgentRegistry::from_config(&config);
     let mut agent_info = agent_registry
-        .get(agent_name)
+        .get_resolved(agent_name)
         .cloned()
         .unwrap_or_else(AgentInfo::build);
 
     let (provider, model_id) = parse_model_and_provider(model);
     if let Some(model_id) = model_id {
-        let provider_id = provider.unwrap_or_else(|| {
-            if model_id.starts_with("claude") {
-                "anthropic".to_string()
-            } else {
-                "openai".to_string()
-            }
-        });
+        let provider_id = match provider {
+            Some(id) => id,
+            None => provider_registry
+                .find_model(&model_id)
+                .map(|(id, _)| id)
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "model '{model_id}' is not offered by any configured provider. \
+                         Pass it as <provider>/<model>, or list what is configured with \
+                         `opencode models`."
+                    )
+                })?,
+        };
         agent_info = agent_info.with_model(model_id, provider_id);
     }
 
@@ -5316,9 +5359,10 @@ async fn generate_agent_response(
     {
         let (model_api_id, provider_id) = match &agent_info.model {
             Some(m) => (m.model_id.clone(), m.provider_id.clone()),
-            None => (
-                "claude-sonnet-4-20250514".to_string(),
-                "anthropic".to_string(),
+            None => anyhow::bail!(
+                "agent '{}' names no model. Pass --model <provider>/<model>, or give an agent \
+                 a model in its config (e.g. `model: opencode/space-bunny-free`).",
+                agent_info.name
             ),
         };
         let cwd = std::env::current_dir().unwrap_or_default();

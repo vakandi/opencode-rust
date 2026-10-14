@@ -101,3 +101,64 @@ fn a_plugin_rewritten_config_still_keeps_the_users_models() {
         "re-applying the omo merge must restore the configured model"
     );
 }
+/// The TUI fell back to `exo-free`, a model Zen has deprecated, and answered every
+/// prompt with `410 ModelDeprecated` — "0 livestream" on every session. The cause is
+/// the same as the CLI's: the active agent (`build`) names no model, so the model
+/// fallback picked whatever the provider catalog listed first.
+#[test]
+fn an_agent_without_a_model_yields_to_one_that_has_one() {
+    let mut models = std::collections::HashMap::new();
+    models.insert("sisyphus".to_string(), "opencode/space-bunny-free".to_string());
+
+    assert_eq!(
+        opencode_tui::app::agent_that_names_a_model(
+            "build",
+            &["build".to_string(), "sisyphus".to_string()],
+            &models
+        ),
+        "sisyphus"
+    );
+}
+
+#[test]
+fn an_agent_that_already_names_a_model_is_kept() {
+    let mut models = std::collections::HashMap::new();
+    models.insert("gilfoyle".to_string(), "opencode/space-bunny-free".to_string());
+    models.insert("sisyphus".to_string(), "opencode/space-bunny-free".to_string());
+
+    assert_eq!(
+        opencode_tui::app::agent_that_names_a_model(
+            "gilfoyle",
+            &["build".to_string(), "gilfoyle".to_string(), "sisyphus".to_string()],
+            &models
+        ),
+        "gilfoyle"
+    );
+}
+
+#[test]
+fn a_display_name_still_matches_its_slug() {
+    let mut models = std::collections::HashMap::new();
+    models.insert("atlas".to_string(), "opencode/space-bunny-free".to_string());
+
+    assert_eq!(
+        opencode_tui::app::agent_that_names_a_model(
+            "build",
+            &["Atlas - Plan Executor".to_string()],
+            &models
+        ),
+        "Atlas - Plan Executor"
+    );
+}
+
+#[test]
+fn with_nothing_configured_the_current_agent_stands() {
+    assert_eq!(
+        opencode_tui::app::agent_that_names_a_model(
+            "build",
+            &["build".to_string()],
+            &std::collections::HashMap::new()
+        ),
+        "build"
+    );
+}

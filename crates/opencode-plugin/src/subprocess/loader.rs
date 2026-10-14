@@ -54,16 +54,16 @@ pub struct PluginLoader {
 
 impl PluginLoader {
     /// Create a new loader. Detects the JS runtime and writes the host script
-    /// to `~/.cache/opencode/plugin-host.ts`.
+    /// next to the installed plugins, at `~/.cache/opencode/plugins/plugin-host.ts`.
     pub fn new() -> Result<Self, PluginLoaderError> {
         let runtime = detect_runtime().ok_or(PluginLoaderError::NoRuntime)?;
 
-        let cache_dir = dirs::cache_dir()
-            .unwrap_or_else(|| PathBuf::from("/tmp"))
-            .join("opencode");
-        std::fs::create_dir_all(&cache_dir)?;
-
-        let host_script_path = cache_dir.join("plugin-host.ts");
+        let host_script_path = host_script_path();
+        std::fs::create_dir_all(
+            host_script_path
+                .parent()
+                .expect("host script path always has a parent"),
+        )?;
         std::fs::write(&host_script_path, HOST_SCRIPT)?;
 
         Ok(Self {
@@ -324,11 +324,20 @@ impl PluginLoader {
     }
 
     fn npm_dir(&self) -> PathBuf {
-        dirs::cache_dir()
-            .unwrap_or_else(|| PathBuf::from("/tmp"))
-            .join("opencode")
-            .join("plugins")
+        npm_dir_path()
     }
+}
+
+/// Where npm plugins are installed, and where the host script must therefore live.
+fn npm_dir_path() -> PathBuf {
+    dirs::cache_dir()
+        .unwrap_or_else(|| PathBuf::from("/tmp"))
+        .join("opencode")
+        .join("plugins")
+}
+
+fn host_script_path() -> PathBuf {
+    npm_dir_path().join("plugin-host.ts")
 }
 
 /// Parse "pkg@version" into (name, version). Handles scoped packages like "@scope/pkg@1.0".
@@ -644,6 +653,24 @@ fn seed_hook_output(event: HookEvent, output: &mut Map<String, Value>) {
         }
         _ => {}
     }
+}
+
+/// Node resolves a bare `import "oh-my-openagent"` from the directory of the FILE that
+/// imports it, not from the process cwd. The host script used to be written one level
+/// above the npm dir, so every installed plugin sat in `plugins/node_modules/` where the
+/// host could not see it, and loading failed with "Cannot find package" even though the
+/// package was installed moments earlier by the very same call.
+#[test]
+fn the_host_script_lives_beside_the_installed_packages() {
+    assert!(
+        host_script_path().starts_with(npm_dir_path()),
+        "the host script must sit inside the npm dir so bare imports resolve"
+    );
+    assert_eq!(
+        host_script_path().parent(),
+        Some(npm_dir_path().as_path()),
+        "the host script must be a direct child of the npm dir"
+    );
 }
 
 #[cfg(test)]

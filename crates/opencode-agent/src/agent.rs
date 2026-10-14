@@ -629,6 +629,58 @@ impl AgentRegistry {
         self.agents.get(name)
     }
 
+    /// Resolve a user-supplied name to a registered agent: exact, then slug, then
+    /// display name (`Atlas - Plan Executor`). `get` is a raw HashMap lookup, so
+    /// `--agent Gilfoyle` missed on a case-insensitive filesystem and silently ran
+    /// as the model-less builtin instead.
+    pub fn get_resolved(&self, name: &str) -> Option<&AgentInfo> {
+        if let Some(agent) = self.agents.get(name) {
+            return Some(agent);
+        }
+        let wanted = opencode_config::agent_slug(name);
+        self.agents
+            .iter()
+            .find(|(key, _)| opencode_config::agent_slug(key) == wanted)
+            .map(|(_, agent)| agent)
+    }
+
+    /// The default agent for a run: the configured one when named and modeled,
+    /// otherwise the first visible non-subagent agent that actually carries a model.
+    /// Every builtin has `model: None`, so preferring `build` is what made a bare run
+    /// fall through to a hardcoded Anthropic model no installation has configured.
+    pub fn default_with_model(&self) -> Option<&AgentInfo> {
+        self.default_with_model_named(None)
+    }
+
+    pub fn default_with_model_named(&self, preferred: Option<&str>) -> Option<&AgentInfo> {
+        if let Some(name) = preferred {
+            if let Some(agent) = self.get_resolved(name) {
+                if agent.model.is_some() && !agent.hidden {
+                    return Some(agent);
+                }
+            }
+        }
+        self.modeled_candidates().into_iter().next()
+    }
+
+    /// Visible non-subagent agents that carry a model, ordered so two runs on one config
+    /// always pick the same default.
+    fn modeled_candidates(&self) -> Vec<&AgentInfo> {
+        let mut candidates: Vec<&AgentInfo> = self
+            .agents
+            .values()
+            .filter(|a| !a.hidden && !matches!(a.mode, AgentMode::Subagent) && a.model.is_some())
+            .collect();
+        candidates.sort_by(|a, b| {
+            let is_builtin =
+                |name: &str| BuiltinAgent::all().iter().any(|b| b.as_str() == name);
+            is_builtin(&b.name)
+                .cmp(&is_builtin(&a.name))
+                .then_with(|| a.name.cmp(&b.name))
+        });
+        candidates
+    }
+
     pub fn get_mut(&mut self, name: &str) -> Option<&mut AgentInfo> {
         self.agents.get_mut(name)
     }
@@ -1100,5 +1152,112 @@ mod tests {
 
         let write = PermissionNext::evaluate_path(&agent, "write", "/srv/agent/x.txt");
         assert_eq!(write, PermissionDecision::Deny);
+    }
+}
+
+#[cfg(test)]
+mod run_resolution_tests {
+    use super::*;
+    use opencode_config::{AgentConfig, AgentConfigs};
+
+    fn registry_with_modeled_agent(slug: &str) -> AgentRegistry {
+        let mut registry = AgentRegistry::new();
+        let mut cfg = AgentConfig::default();
+        cfg.model = Some("opencode/space-bunny-free".to_string());
+        cfg.mode = Some(opencode_config::AgentMode::Primary);
+        let mut configs = AgentConfigs::default();
+        configs
+            .entries
+            .insert(slug.to_string(), cfg);
+        let mut loaded = LoadedConfig::default();
+        loaded.agent = Some(configs);
+        registry.apply_config(&loaded);
+        registry
+    }
+
+    /// `get` is a raw HashMap lookup, so a user typing `--agent Gilfoyle` on a
+    /// case-insensitive filesystem missed the agent entirely and silently ran as the
+    /// model-less builtin instead.
+    #[test]
+    fn get_resolved_matches_regardless_of_case() {
+        let registry = registry_with_modeled_agent("gilfoyle");
+        assert!(
+            registry.get("Gilfoyle").is_none(),
+            "precondition: the raw lookup is case-sensitive"
+        );
+        let resolved = registry
+            .get_resolved("Gilfoyle")
+            .expect("case-different name must resolve");
+        assert_eq!(resolved.name.to_lowercase(), "gilfoyle");
+    }
+
+    #[test]
+    fn get_resolved_matches_the_display_suffix_form() {
+        let registry = registry_with_modeled_agent("atlas");
+        let resolved = registry
+            .get_resolved("Atlas - Plan Executor")
+            .expect("the display form plugins register must resolve");
+        assert_eq!(resolved.name, "atlas");
+    }
+
+    #[test]
+    fn get_resolved_returns_none_for_an_unknown_agent() {
+        let registry = registry_with_modeled_agent("gilfoyle");
+        assert!(registry.get_resolved("does-not-exist").is_none());
+    }
+
+    /// The default run agent must be one that actually carries a model. Every builtin
+    /// has `model: None`, so preferring `build` is what made `opr run "hi"` invent an
+    /// Anthropic model and die with "no provider configured for 'anthropic'".
+    #[test]
+    fn default_with_model_skips_model_less_builtins() {
+        let registry = registry_with_modeled_agent("sisyphus");
+        let chosen = registry
+            .default_with_model()
+            .expect("a modeled agent exists");
+        assert_eq!(chosen.name, "sisyphus");
+        assert!(chosen.model.is_some());
+    }
+
+    #[test]
+    fn default_with_model_prefers_the_configured_default_agent() {
+        let mut registry = AgentRegistry::new();
+        for slug in ["alpha", "beta"] {
+            let mut cfg = AgentConfig::default();
+            cfg.model = Some("opencode/space-bunny-free".to_string());
+            cfg.mode = Some(opencode_config::AgentMode::Primary);
+            let mut configs = AgentConfigs::default();
+            configs.entries.insert(slug.to_string(), cfg);
+            let mut loaded = LoadedConfig::default();
+            loaded.agent = Some(configs);
+            registry.apply_config(&loaded);
+        }
+        let chosen = registry
+            .default_with_model_named(Some("beta"))
+            .expect("beta carries a model");
+        assert_eq!(chosen.name, "beta");
+    }
+
+    #[test]
+    fn default_with_model_is_none_when_nothing_carries_a_model() {
+        let registry = AgentRegistry::new();
+        assert!(
+            registry.default_with_model().is_none(),
+            "an installation with no modeled agent must report that, not guess"
+        );
+    }
+
+    #[test]
+    fn default_with_model_skips_hidden_and_subagents() {
+        let mut registry = registry_with_modeled_agent("sisyphus");
+        let mut hidden = AgentInfo::custom("ghost".to_string());
+        hidden.model = Some(ModelRef {
+            provider_id: "opencode".to_string(),
+            model_id: "space-bunny-free".to_string(),
+        });
+        hidden.hidden = true;
+        registry.register(hidden);
+        let chosen = registry.default_with_model().expect("sisyphus");
+        assert_eq!(chosen.name, "sisyphus", "a hidden agent must never become the default");
     }
 }

@@ -52,6 +52,14 @@ pub async fn start(cfg: ProxyConfig) -> std::io::Result<RunningProxy> {
     }
 
     let pool_path = pool::pool_file();
+    // Seeding lives here, not in a launch script: `run` and `tui` never ran serve-rust.sh,
+    // so their pool was absent, the listener refused to bind, and every inference fell
+    // through to a direct connection that Zen answers with FreeTierError.
+    match pool::seed_if_missing(&pool_path, &pool::default_source()) {
+        Ok(true) => tracing::info!(path = %pool_path.display(), "seeded proxy pool"),
+        Ok(false) => {}
+        Err(error) => tracing::warn!(%error, path = %pool_path.display(), "proxy pool seed failed"),
+    }
     if pool::load(&pool_path).is_empty() {
         // Refuse loudly rather than bind a listener that answers 502 for everything.
         // The reference starts a proxy with an empty pool and clients see a generic

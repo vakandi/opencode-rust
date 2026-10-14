@@ -784,13 +784,21 @@ impl OpenAIProvider {
             // `ToolDefinition { name, description, parameters }`, so serializing it directly
             // emits `{"name":...}` and those endpoints reject the whole request with
             // `400 invalid_request_error` (verified against opencode zen).
-            if let Some(Value::Array(tools)) = obj.remove("tools") {
-                let wrapped: Vec<Value> = tools
-                    .into_iter()
-                    .map(|tool| serde_json::json!({"type": "function", "function": tool}))
-                    .collect();
-                obj.insert("tools".to_string(), Value::Array(wrapped));
-            }
+            // The engine never invents tools here. Zen answers 403 FreeTierError to a body
+            // carrying none, an empty array, or a single made-up tool; only the agent's real
+            // tool set is accepted. Supplying them is the caller's job, so this only wraps
+            // what it was given.
+            let wrapped: Vec<Value> = obj
+                .remove("tools")
+                .and_then(|value| match value {
+                    Value::Array(tools) => Some(tools),
+                    _ => None,
+                })
+                .unwrap_or_default()
+                .into_iter()
+                .map(|tool| serde_json::json!({"type": "function", "function": tool}))
+                .collect();
+            obj.insert("tools".to_string(), Value::Array(wrapped));
 
             let effort = openai_reasoning_effort(&request.model, request.variant.as_deref());
             if let Some(effort) = effort {
@@ -1276,14 +1284,19 @@ impl OpenAIProvider {
             }
         }
 
-        if self.config.requires_agent_shape {
-        }
-
+        tracing::debug!(
+            url = %url,
+            model = %request.model,
+            session = ?request.session_id,
+            bytes = request_body.to_string().len(),
+            "provider request"
+        );
         let response = req_builder
             .json(&request_body)
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        tracing::debug!(status = %response.status(), "provider response");
 
         if !response.status().is_success() {
             let status = response.status();
@@ -1476,6 +1489,103 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::message::{Content, Message, Role, ToolDefinition};
+
+    fn title_request() -> ChatRequest {
+        ChatRequest {
+            model: "space-bunny-free".to_string(),
+            messages: vec![Message {
+                role: Role::User,
+                content: Content::Text("title please".to_string()),
+                cache_control: None,
+                provider_options: None,
+            }],
+            max_tokens: Some(100),
+            temperature: Some(0.0),
+            top_p: None,
+            system: None,
+            tools: None,
+            stream: None,
+            provider_options: None,
+            variant: None,
+            session_id: None,
+        }
+    }
+
+    /// The engine must not invent tools to satisfy Zen: none, an empty array and a
+    /// single made-up tool are all refused with FreeTierError, and only the agent's real
+    /// tool set is accepted. Synthesising a placeholder here silently re-broke every
+    /// synthetic call until the callers were given the real schemas instead.
+    #[test]
+    fn a_request_without_tools_is_not_given_an_invented_one() {
+        let request = title_request();
+
+        let body = OpenAIProvider::build_request_body(&request).expect("body builds");
+        let tools = body
+            .get("tools")
+            .and_then(|value| value.as_array())
+            .expect("tools key must always be present");
+        assert!(
+            tools.is_empty(),
+            "the caller supplies the agent's real tools; the body builder must not fabricate any"
+        );
+    }
+
+    #[test]
+    fn the_agents_own_tools_survive_the_wrap() {
+        let mut request = title_request();
+        request.tools = Some(vec![
+            ToolDefinition {
+                name: "bash".to_string(),
+                description: Some("run a command".to_string()),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {"command": {"type": "string"}}
+                }),
+            },
+            ToolDefinition {
+                name: "read".to_string(),
+                description: Some("read a file".to_string()),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {"path": {"type": "string"}}
+                }),
+            },
+        ]);
+
+        let body = OpenAIProvider::build_request_body(&request).expect("body builds");
+        let tools = body.get("tools").and_then(|v| v.as_array()).expect("tools array");
+        assert_eq!(tools.len(), 2, "both agent tools must reach the wire");
+        assert_eq!(tools[0]["function"]["name"], "bash");
+        assert_eq!(
+            tools[1]["function"]["parameters"]["properties"]["path"]["type"],
+            "string",
+            "the real schema must survive, not be flattened to an empty object"
+        );
+    }
+
+    #[test]
+    fn existing_tools_are_still_wrapped_per_the_openai_schema() {
+        let mut request = title_request();
+        request.tools = Some(vec![ToolDefinition {
+            name: "bash".to_string(),
+            description: Some("run".to_string()),
+            parameters: serde_json::json!({"type": "object"}),
+        }]);
+
+        let body = OpenAIProvider::build_request_body(&request).expect("body builds");
+        assert_eq!(
+            body.get("tools"),
+            Some(&serde_json::json!([{
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "description": "run",
+                    "parameters": {"type": "object"}
+                }
+            }]))
+        );
+    }
 
     // Regression: the rewrite had a `_ => {}` catch-all that discarded image parts, so
     // every multimodal request through an OpenAI-compatible endpoint lost its picture.

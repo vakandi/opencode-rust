@@ -213,6 +213,42 @@ pub fn pool_file() -> PathBuf {
     opencode_paths::data_file(|| std::env::temp_dir(), "proxy-pool.txt")
 }
 
+/// Copy the canonical pool into place when the resolved pool is missing or empty.
+///
+/// Returns whether a copy happened. An existing pool is never touched: the live
+/// rotation history written back into it must survive every boot.
+pub fn seed_if_missing(dest: &Path, source: &Path) -> std::io::Result<bool> {
+    if dest.metadata().map(|m| m.len() > 0).unwrap_or(false) {
+        return Ok(false);
+    }
+    if !source.is_file() {
+        return Ok(false);
+    }
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::copy(source, dest)?;
+    Ok(true)
+}
+
+/// Where an unseeded pool is copied from: `OPENCODE_PROXIES_FILE` when set, otherwise the
+/// shared plugin proxy list every opencode install on this machine reads.
+pub fn default_source() -> PathBuf {
+    if let Some(path) = std::env::var("OPENCODE_PROXIES_FILE").ok().filter(|v| !v.trim().is_empty())
+    {
+        return PathBuf::from(path.trim());
+    }
+    std::env::var("HOME")
+        .ok()
+        .filter(|h| !h.trim().is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_default()
+        .join(".config")
+        .join("opencode")
+        .join("plugins")
+        .join("proxies.txt")
+}
+
 pub fn quarantine_file() -> PathBuf {
     opencode_paths::data_file(|| std::env::temp_dir(), "proxy-quarantine.json")
 }
@@ -229,6 +265,65 @@ pub fn pool_keys(entries: &[PoolEntry]) -> HashSet<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `clean.sh` wipes the data directory, taking the pool with it. The engine then
+    /// cannot bind its listener, `run` and `tui` fall back to a direct connection, and
+    /// Zen answers 403 FreeTierError on every inference — which is why the TUI showed
+    /// "0 livestream" on every session while the models list stayed reachable.
+    #[test]
+    fn seeding_creates_the_pool_when_it_is_missing() {
+        let dir = tempdir("missing");
+        let source = dir.join("proxies.txt");
+        let dest = dir.join("nested").join("proxy-pool.txt");
+        fs::write(&source, "1.2.3.4:8080:u:p\n").unwrap();
+
+        assert!(seed_if_missing(&dest, &source).expect("seed runs"));
+        assert_eq!(fs::read_to_string(&dest).unwrap(), "1.2.3.4:8080:u:p\n");
+    }
+
+    #[test]
+    fn seeding_never_overwrites_an_existing_pool() {
+        let dir = tempdir("existing");
+        let source = dir.join("proxies.txt");
+        let dest = dir.join("proxy-pool.txt");
+        fs::write(&source, "9.9.9.9:1:u:p\n").unwrap();
+        fs::write(&dest, "1.2.3.4:8080:u:p\n").unwrap();
+
+        assert!(!seed_if_missing(&dest, &source).expect("seed runs"));
+        assert_eq!(
+            fs::read_to_string(&dest).unwrap(),
+            "1.2.3.4:8080:u:p\n",
+            "rotation history written back into the pool must survive a seed"
+        );
+    }
+
+    #[test]
+    fn seeding_an_empty_pool_file_still_seeds() {
+        let dir = tempdir("empty");
+        let source = dir.join("proxies.txt");
+        let dest = dir.join("proxy-pool.txt");
+        fs::write(&source, "1.2.3.4:8080:u:p\n").unwrap();
+        fs::write(&dest, "").unwrap();
+
+        assert!(seed_if_missing(&dest, &source).expect("seed runs"));
+        assert!(load(&dest).len() > 0);
+    }
+
+    #[test]
+    fn seeding_without_a_source_is_a_no_op_not_an_error() {
+        let dir = tempdir("nosource");
+        let dest = dir.join("proxy-pool.txt");
+        assert!(!seed_if_missing(&dest, &dir.join("absent.txt")).expect("no error"));
+        assert!(!dest.exists());
+    }
+
+    fn tempdir(tag: &str) -> PathBuf {
+        let base = std::env::temp_dir()
+            .join(format!("opr-seed-{}-{tag}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&base).unwrap();
+        base
+    }
 
     #[test]
     fn parses_a_full_line_including_duration() {

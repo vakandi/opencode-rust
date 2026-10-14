@@ -269,13 +269,22 @@ impl App {
             event_caused_change: true,
         };
 
+        eprintln!("TUIDBG build reached refresh phase");
+        tracing::info!(stage = "startup", "models");
         app.refresh_model_dialog();
+        tracing::info!(stage = "startup", "agents");
         app.refresh_agent_dialog();
+        tracing::info!(stage = "startup", "skills");
         let _ = app.refresh_skill_list_dialog();
+        tracing::info!(stage = "startup", "sessions");
         app.refresh_session_list_dialog();
+        tracing::info!(stage = "startup", "themes");
         app.refresh_theme_list_dialog();
+        tracing::info!(stage = "startup", "lsp");
         let _ = app.refresh_lsp_status();
+        tracing::info!(stage = "startup", "mcp");
         let _ = app.refresh_mcp_dialog();
+        tracing::info!(stage = "startup", "ready");
 
         if let Some(session_id) = initial_session_id {
             let _ = app.sync_session_from_server(&session_id);
@@ -288,7 +297,9 @@ impl App {
     }
 
     pub fn run(&mut self) -> anyhow::Result<()> {
+        eprintln!("TUIDBG first draw");
         self.draw()?;
+        eprintln!("TUIDBG drawn, entering loop");
 
         while self.state != AppState::Exiting {
             let mut should_draw = false;
@@ -2558,16 +2569,34 @@ impl App {
 
         let model_missing = self.context.current_model.read().is_none();
         if model_missing {
-            if let Some((provider, model_id)) = providers.default_model.iter().next() {
-                self.set_active_model_selection(
-                    format!("{}/{}", provider, model_id),
-                    Some(provider.clone()),
-                );
+            // Sorted, not `.iter().next()`: an unordered map made the default model vary
+            // between runs, which is how a deprecated catalog entry could win.
+            let mut defaults: Vec<String> = providers
+                .default_model
+                .iter()
+                .map(|(provider, model_id)| format!("{provider}/{model_id}"))
+                .collect();
+            defaults.sort();
+            if let Some(model_ref) = defaults.first() {
+                let provider = providers
+                    .default_model
+                    .iter()
+                    .find(|(provider, model_id)| &format!("{provider}/{model_id}") == model_ref)
+                    .map(|(provider, _)| provider.clone());
+                self.set_active_model_selection(model_ref.clone(), provider);
             }
         }
     }
 
     fn refresh_agent_dialog(&mut self) {
+        // Seeded before the server round-trip, which can fail or answer late: a model-less
+        // agent set drops the choice onto whatever the provider catalog lists first, and
+        // that has included deprecated models Zen answers 410 for. The local config is
+        // authoritative here and is what `run` already reads.
+        if self.agent_models.is_empty() {
+            self.agent_models = locally_configured_agent_models();
+        }
+
         let Some(client) = self.context.get_api_client() else {
             return;
         };
@@ -2615,6 +2644,11 @@ impl App {
             }
         }
         let active = self.context.current_agent.read().clone();
+        let active = agent_that_names_a_model(&active, &agent_names, &self.agent_models);
+        if *self.context.current_agent.read() != active {
+            self.context.set_agent(active.clone());
+            self.sync_prompt_spinner_style();
+        }
         self.apply_agent_model(&active);
         self.prompt.set_agent_suggestions(agent_names);
     }
@@ -4963,4 +4997,51 @@ mod wire_fold_tests {
 
         assert_eq!(message.content, "shown");
     }
+}
+
+/// Agent -> model, straight from the config this process already loaded.
+fn locally_configured_agent_models() -> HashMap<String, String> {
+    let Ok(cwd) = std::env::current_dir() else {
+        return HashMap::new();
+    };
+    let Ok(config) = opencode_config::load_config(&cwd) else {
+        return HashMap::new();
+    };
+    opencode_agent::AgentRegistry::from_optional_config(Some(&config))
+        .list_all()
+        .into_iter()
+        .filter_map(|agent| {
+            agent.model.as_ref().map(|model| {
+                (
+                    opencode_config::agent_slug(&agent.name),
+                    format!("{}/{}", model.provider_id, model.model_id),
+                )
+            })
+        })
+        .collect()
+}
+
+/// The agent whose model the TUI should run under: the current one when it names a
+/// model, otherwise the first agent that does.
+///
+/// No builtin names a model, so `build` left `current_model` unset and the fallback
+/// picked whatever the provider catalog listed first — `exo-free`, which Zen has since
+/// deprecated, so every prompt answered `410 ModelDeprecated`.
+pub fn agent_that_names_a_model(
+    current: &str,
+    agent_names: &[String],
+    agent_models: &HashMap<String, String>,
+) -> String {
+    let names_model = |name: &str| {
+        agent_models
+            .contains_key(&opencode_config::agent_slug(name))
+    };
+    if names_model(current) {
+        return current.to_string();
+    }
+    agent_names
+        .iter()
+        .find(|name| names_model(name))
+        .cloned()
+        .unwrap_or_else(|| current.to_string())
 }

@@ -303,6 +303,7 @@ async fn generate_message_title_llm(
     text: &str,
     provider: &dyn Provider,
     model_id: &str,
+    session_id: &str,
 ) -> Option<String> {
     if text.trim().is_empty() {
         return None;
@@ -326,9 +327,14 @@ async fn generate_message_title_llm(
         system: Some(
             "You generate short request titles. Reply with only the title text.".to_string(),
         ),
-        tools: None,
+        // Same rule as the session title: Zen answers 403 FreeTierError unless the request
+        // carries real tool schemas, so this rides the agent's own tool set.
+        tools: Some(crate::prompt::default_tool_definitions().await),
         stream: Some(false),
-        session_id: None,
+        // Carries the session identity: `for_session("")` hands back a direct client and
+        // mints an unrelated x-opencode-session, so this call neither rode the session's
+        // residential proxy nor belonged to the turn it was titling.
+        session_id: Some(session_id.to_string()),
         provider_options: None,
         variant: None,
     };
@@ -397,7 +403,7 @@ pub async fn summarize_message_for_session(
             if !has_title {
                 if let Some(text) = first_user_text_for_message(session, message_id) {
                     let generated = if let (Some(provider), Some(model_id)) = (provider, model_id) {
-                        generate_message_title_llm(&text, provider, model_id)
+                        generate_message_title_llm(&text, provider, model_id, &session.id)
                             .await
                             .or_else(|| Some(fallback_message_title(&text)))
                     } else {

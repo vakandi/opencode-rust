@@ -1308,7 +1308,7 @@ impl SessionPrompt {
             Self::emit_session_update(update_hook.as_ref(), session);
 
             if !post_first_step_ran {
-                Self::ensure_title(session, provider.clone(), &model_id).await;
+                Self::ensure_title(session, provider.clone(), &model_id, &resolved_tools).await;
                 let _ = Self::summarize_session(
                     session,
                     &session_id,
@@ -2249,7 +2249,12 @@ impl SessionPrompt {
         total_chars > MAX_CONTEXT_CHARS
     }
 
-    async fn ensure_title(session: &mut Session, provider: Arc<dyn Provider>, model_id: &str) {
+    async fn ensure_title(
+        session: &mut Session,
+        provider: Arc<dyn Provider>,
+        model_id: &str,
+        tools: &[ToolDefinition],
+    ) {
         if !session.is_default_title() {
             return;
         }
@@ -2266,7 +2271,7 @@ impl SessionPrompt {
         }
 
         let title =
-            generate_session_title_llm(&first_user_text, provider, model_id, &session.id).await;
+            generate_session_title_llm(&first_user_text, provider, model_id, &session.id, tools).await;
         if !title.trim().is_empty() {
             session.set_title(title);
         }
@@ -3583,8 +3588,10 @@ pub async fn generate_session_title_llm(
     provider: Arc<dyn Provider>,
     model_id: &str,
     session_id: &str,
+    tools: &[ToolDefinition],
 ) -> String {
     let fallback = generate_session_title(first_user_message);
+
 
     let request = ChatRequest {
         model: model_id.to_string(),
@@ -3598,7 +3605,14 @@ pub async fn generate_session_title_llm(
             cache_control: None,
             provider_options: None,
         }],
-        tools: None,
+        // Zen answers 403 FreeTierError unless the request carries the agent's own tool
+        // schemas: none, an empty array, or a single invented tool are all refused while
+        // the real set answers 200.
+        tools: if tools.is_empty() {
+            None
+        } else {
+            Some(tools.to_vec())
+        },
         // The session id is what routes this call through the per-session residential
         // proxy. Left empty, `for_session` hands back a direct client, Zen sees traffic
         // from outside OpenCode and answers 403 FreeTierError — which is why every title
