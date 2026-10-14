@@ -17,9 +17,13 @@ async fn plugin_tool_is_captured_and_executed() {
 
     // PluginLoader::new() materialises the embedded host script into the cache dir.
     let _loader = PluginLoader::new().expect("loader");
+    // Inside the plugins dir, beside `node_modules/`: Node resolves a bare
+    // `import "pkg"` from the directory of the importing FILE, so a host script one level
+    // up could never see an installed package and every plugin load failed.
     let host = dirs::cache_dir()
         .expect("cache dir")
         .join("opencode")
+        .join("plugins")
         .join("plugin-host.ts");
     assert!(host.exists(), "host script not materialised at {host:?}");
 

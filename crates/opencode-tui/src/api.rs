@@ -547,7 +547,15 @@ impl ApiClient {
     pub fn list_agents(&self) -> anyhow::Result<Vec<AgentInfo>> {
         let url = format!("{}/agent", self.base_url);
 
-        let response = self.client.get(&url).send()?;
+        // Bounded well below the client default: this runs during startup, and the
+        // endpoint re-runs every plugin's `config` hook, which can take tens of seconds.
+        // The UI already has agent models from the local config, so a slow answer must not
+        // hold the first draw hostage.
+        let response = self
+            .client
+            .get(&url)
+            .timeout(std::time::Duration::from_secs(6))
+            .send()?;
 
         if !response.status().is_success() {
             let status = response.status();

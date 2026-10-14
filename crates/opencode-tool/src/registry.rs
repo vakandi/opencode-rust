@@ -8,6 +8,10 @@ use opencode_plugin::{HookContext, HookEvent};
 /// Tools that should not appear in suggestion lists when a tool is not found.
 const FILTERED_FROM_SUGGESTIONS: &[&str] = &["invalid", "patch", "batch"];
 
+/// Ceiling on the `tool.definition` fan-out. Keeps a wedged plugin host from stalling
+/// the first prompt; the turn must reach the provider.
+const TOOL_DEFINITION_HOOK_BUDGET_MS: u64 = 1_500;
+
 pub struct ToolRegistry {
     tools: RwLock<HashMap<String, Arc<dyn Tool>>>,
     plugin_tools: RwLock<HashSet<String>>,
@@ -83,17 +87,36 @@ impl ToolRegistry {
         // Plugin-authored tools are skipped: their schema came from the plugin already, and
         // one round-trip per tool (each able to burn the full RPC timeout) is what made a
         // single prompt take minutes.
+        // One budget for the entire fan-out, not per tool: a per-call timeout still
+        // multiplied out to ~44s across the 22 built-ins, which is long enough that the
+        // first prompt never reached the provider. Past the deadline the schema ships
+        // as-is rather than stalling the turn.
+        let definition_deadline = tokio::time::Instant::now()
+            + std::time::Duration::from_millis(TOOL_DEFINITION_HOOK_BUDGET_MS);
+
         for schema in &mut schemas {
             if from_plugin.contains(&schema.name) {
                 continue;
             }
-            let hook_outputs = opencode_plugin::trigger_collect(
-                HookContext::new(HookEvent::ToolDefinition)
-                    .with_data("tool_id", serde_json::json!(&schema.name))
-                    .with_data("description", serde_json::json!(&schema.description))
-                    .with_data("parameters", schema.parameters.clone()),
+            // One round-trip per tool, and each can burn the full RPC timeout when a plugin
+            // host is wedged. With ~22 tools the first prompt stalled for minutes before the
+            // provider was ever called. Bound the whole fan-out instead: a plugin that cannot
+            // answer in time simply does not get to rewrite this schema.
+            let remaining = definition_deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                continue;
+            }
+            let hook_outputs = tokio::time::timeout(
+                remaining,
+                opencode_plugin::trigger_collect(
+                    HookContext::new(HookEvent::ToolDefinition)
+                        .with_data("tool_id", serde_json::json!(&schema.name))
+                        .with_data("description", serde_json::json!(&schema.description))
+                        .with_data("parameters", schema.parameters.clone()),
+                ),
             )
-            .await;
+            .await
+            .unwrap_or_default();
             for output in hook_outputs {
                 if let Some(payload) = output.payload.as_ref() {
                     apply_tool_definition_payload(schema, payload);
@@ -249,14 +272,11 @@ pub async fn create_default_registry() -> ToolRegistry {
     registry.register(crate::grep_tool::GrepTool::new()).await;
     registry.register(crate::ls::LsTool::new()).await;
     registry.register(crate::task::TaskTool::new()).await;
-    registry
-        .register(crate::question::QuestionTool::new())
+    registry.register(crate::question::QuestionTool::new())
         .await;
-    registry
-        .register(crate::webfetch::WebFetchTool::new())
+    registry.register(crate::webfetch::WebFetchTool::new())
         .await;
-    registry
-        .register(crate::websearch::WebSearchTool::new())
+    registry.register(crate::websearch::WebSearchTool::new())
         .await;
     registry.register(crate::todo::TodoReadTool).await;
     registry.register(crate::todo::TodoWriteTool).await;

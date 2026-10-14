@@ -33,9 +33,7 @@ fn setup_panic_hook() {
 
 pub fn run_tui() -> anyhow::Result<()> {
     setup_panic_hook();
-    eprintln!("TUIDBG run_tui entered");
 
     let mut app = App::new()?;
-    eprintln!("TUIDBG App::new returned");
     app.run()
 }

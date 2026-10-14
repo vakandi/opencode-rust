@@ -639,11 +639,13 @@ pub async fn ensure_session_proxy(session_id: &str) {
 }
 
 pub async fn run_server(addr: SocketAddr) -> anyhow::Result<()> {
+    let started = std::time::Instant::now();
     // MUST precede the provider registry construction. See `start_native_proxy`.
     start_native_proxy().await;
-    crate::mcp_loader::boot(std::env::current_dir().unwrap_or_default()).await;
+    tracing::info!(elapsed_ms = started.elapsed().as_millis(), phase = "proxy", "startup");
 
     let state = Arc::new(ServerState::new_with_storage_for_url(format!("http://{}", addr)).await?);
+    tracing::info!(elapsed_ms = started.elapsed().as_millis(), phase = "state", "startup");
 
     let app = routes::router()
         .layer(cors_layer())
@@ -652,6 +654,18 @@ pub async fn run_server(addr: SocketAddr) -> anyhow::Result<()> {
         .layer(axum::middleware::from_fn(routes::require_admin_token));
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
+    tracing::info!(elapsed_ms = started.elapsed().as_millis(), phase = "bound", "startup");
+
+    // After the bind, never before. Booting the MCP servers runs `npx` for several of them,
+    // which reaches the registry over whatever proxy is configured; with no usable upstream
+    // that hangs, and the port was never bound, so every client waiting on readiness — the
+    // TUI included — sat on a black screen. The registry is populated behind the listener and
+    // `mcp_loader::registry()` already treats "not ready yet" as absent.
+    tokio::spawn(async move {
+        let boot_started = std::time::Instant::now();
+        crate::mcp_loader::boot(std::env::current_dir().unwrap_or_default()).await;
+        tracing::info!(elapsed_ms = boot_started.elapsed().as_millis(), "mcp boot finished");
+    });
 
     tracing::info!("Server listening on {}", addr);
 

@@ -1669,6 +1669,7 @@ async fn run_prompt_turn(
         session
     };
     set_session_run_status(&state, &session_id, SessionRunStatus::Busy).await;
+    tracing::info!(target: "turn", "1 turn entered");
 
     if let Some(variant) = variant.as_deref() {
         session
@@ -1708,7 +1709,9 @@ async fn run_prompt_turn(
         }
     });
 
+    tracing::info!(target: "turn", "2 building tool definitions");
     let builtins = opencode_session::default_tool_definitions().await;
+    tracing::info!(target: "turn", "3 builtin tools={} mcp_tools={}", builtins.len(), crate::mcp_loader::configured_tools().len());
     let tools = opencode_session::prompt::merge_tool_definitions(
         builtins,
         crate::mcp_loader::configured_tools(),
@@ -1751,6 +1754,7 @@ async fn run_prompt_turn(
         }),
     };
 
+    tracing::info!(target: "turn", "4 calling provider model={}/{}", provider_id, model_id);
     if let Err(error) = prompt_runner
         .prompt_with_update_hook(
             input,
@@ -4555,6 +4559,10 @@ async fn list_agents() -> Result<Json<Vec<AgentInfo>>> {
     Ok(Json(agents))
 }
 
+/// Ceiling on a single plugin `config` hook. Generous for a slow plugin, short enough
+/// that a wedged one cannot stall the request that invoked it.
+const PLUGIN_CONFIG_HOOK_TIMEOUT: Duration = Duration::from_secs(60);
+
 async fn apply_plugin_config_hooks(loader: &Arc<PluginLoader>, config: &mut AppConfig) {
     let mut config_value = match serde_json::to_value(config.clone()) {
         Ok(value) => value,
@@ -4565,10 +4573,32 @@ async fn apply_plugin_config_hooks(loader: &Arc<PluginLoader>, config: &mut AppC
     };
 
     for client in loader.clients().await {
-        match client
-            .invoke_hook("config", config_value.clone(), config_value.clone())
-            .await
-        {
+        // Only ask a plugin that declares the hook. The built-in auth plugins have none, and
+        // an RPC they never answer cost the full timeout each — several of them, serially, on
+        // the `/agent` endpoint the TUI blocks on during startup.
+        if !client.hooks().iter().any(|hook| hook == "config") {
+            continue;
+        }
+
+        // A plugin that never answers must not hang the endpoint that called it: `/agent`
+        // waited on this hook forever, and the TUI blocks on `/agent` during startup, so
+        // the whole UI sat on a black screen.
+        let invoked = tokio::time::timeout(
+            PLUGIN_CONFIG_HOOK_TIMEOUT,
+            client.invoke_hook("config", config_value.clone(), config_value.clone()),
+        )
+        .await;
+        let outcome = match invoked {
+            Ok(outcome) => outcome,
+            Err(_) => {
+                tracing::warn!(
+                    plugin = client.name(),
+                    "plugin config hook timed out; continuing without its config"
+                );
+                continue;
+            }
+        };
+        match outcome {
             Ok(next_config) => {
                 if next_config.is_object() {
                     config_value = next_config;

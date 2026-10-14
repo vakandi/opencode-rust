@@ -270,7 +270,27 @@ impl Default for ConfigLoader {
     }
 }
 
+/// True when the deployment asked for an exclusive config directory.
+/// Must stay in sync with `collect_opencode_directories_isolated`.
+pub fn is_config_dir_isolated() -> bool {
+    std::env::var("OPENCODE_CONFIG_DIR_ISOLATED")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
 fn get_global_config_path() -> PathBuf {
+    // `load_all` merges the global config BEFORE the isolation-aware directory
+    // scan, so without this the operator's live `~/.config/opencode` — and its
+    // plugin array — still reaches an isolated deployment. Do not drop this as
+    // redundant with `collect_opencode_directories_isolated`; it is not.
+    if is_config_dir_isolated() {
+        if let Ok(dir) = std::env::var("OPENCODE_CONFIG_DIR") {
+            if !dir.trim().is_empty() {
+                return PathBuf::from(dir.trim()).join("opencode");
+            }
+        }
+    }
+
     let xdg_root = std::env::var("XDG_CONFIG_HOME")
         .ok()
         .map(PathBuf::from)

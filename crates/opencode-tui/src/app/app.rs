@@ -269,22 +269,13 @@ impl App {
             event_caused_change: true,
         };
 
-        eprintln!("TUIDBG build reached refresh phase");
-        tracing::info!(stage = "startup", "models");
         app.refresh_model_dialog();
-        tracing::info!(stage = "startup", "agents");
         app.refresh_agent_dialog();
-        tracing::info!(stage = "startup", "skills");
         let _ = app.refresh_skill_list_dialog();
-        tracing::info!(stage = "startup", "sessions");
         app.refresh_session_list_dialog();
-        tracing::info!(stage = "startup", "themes");
         app.refresh_theme_list_dialog();
-        tracing::info!(stage = "startup", "lsp");
         let _ = app.refresh_lsp_status();
-        tracing::info!(stage = "startup", "mcp");
         let _ = app.refresh_mcp_dialog();
-        tracing::info!(stage = "startup", "ready");
 
         if let Some(session_id) = initial_session_id {
             let _ = app.sync_session_from_server(&session_id);
@@ -297,9 +288,7 @@ impl App {
     }
 
     pub fn run(&mut self) -> anyhow::Result<()> {
-        eprintln!("TUIDBG first draw");
         self.draw()?;
-        eprintln!("TUIDBG drawn, entering loop");
 
         while self.state != AppState::Exiting {
             let mut should_draw = false;
@@ -2593,8 +2582,10 @@ impl App {
         // agent set drops the choice onto whatever the provider catalog lists first, and
         // that has included deprecated models Zen answers 410 for. The local config is
         // authoritative here and is what `run` already reads.
-        if self.agent_models.is_empty() {
-            self.agent_models = locally_configured_agent_models();
+        let local_models = locally_configured_agent_models();
+        let had_local = !local_models.is_empty();
+        if had_local {
+            self.agent_models = local_models.clone();
         }
 
         let Some(client) = self.context.get_api_client() else {
@@ -2631,7 +2622,16 @@ impl App {
             .collect::<Vec<_>>();
         self.agent_select.set_agents(mapped);
         if !agent_models.is_empty() {
-            self.agent_models = agent_models;
+            // The server re-runs the plugin `config` hook, whose output has every agent on
+            // the plugin's own fallback model. The local config already resolved the same
+            // agents correctly, so it wins and the server only fills in what it lacks.
+            if had_local {
+                for (slug, model) in agent_models {
+                    self.agent_models.entry(slug).or_insert(model);
+                }
+            } else {
+                self.agent_models = agent_models;
+            }
         }
         let current = self.context.current_agent.read().clone();
         let known = agent_names.iter().any(|name| {

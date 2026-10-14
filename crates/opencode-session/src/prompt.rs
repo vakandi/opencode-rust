@@ -3562,7 +3562,8 @@ pub async fn resolve_tools(tool_registry: &opencode_tool::ToolRegistry) -> Vec<T
 /// Tool definitions for the default registry, with no MCP tools merged in.
 pub async fn default_tool_definitions() -> Vec<ToolDefinition> {
     let tool_registry = opencode_tool::create_default_registry().await;
-    resolve_tools(&tool_registry).await
+    let resolved = resolve_tools(&tool_registry).await;
+    resolved
 }
 
 pub fn max_steps_for_agent(agent_steps: Option<u32>) -> u32 {

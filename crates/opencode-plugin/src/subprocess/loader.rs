@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::time::Duration;
 use std::sync::Arc;
 
 use serde_json::{Map, Value};
@@ -15,6 +16,9 @@ use crate::{Hook, HookContext, HookError, HookEvent, HookOutput, PluginSystem};
 // ---------------------------------------------------------------------------
 // Embedded host script
 // ---------------------------------------------------------------------------
+
+/// Ceiling on the package-manager install that runs on the server's startup path.
+const NPM_INSTALL_TIMEOUT: Duration = Duration::from_secs(60);
 
 const HOST_SCRIPT: &str = include_str!("../../host/plugin-host.ts");
 const BUILTIN_CODEX_AUTH: &str = include_str!("../../builtin/codex-auth.ts");
@@ -92,8 +96,14 @@ impl PluginLoader {
             .map(|s| s.as_str())
             .collect();
 
-        if !npm_specs.is_empty() {
-            self.install_npm_packages(&npm_specs).await?;
+        tracing::info!(specs = ?specs, npm = ?npm_specs, "plugin specs requested");
+        let missing: Vec<&str> = npm_specs
+            .iter()
+            .copied()
+            .filter(|spec| !self.already_installed(spec))
+            .collect();
+        if !missing.is_empty() {
+            self.install_npm_packages(&missing).await?;
         }
 
         // Spawn each plugin
@@ -305,13 +315,36 @@ impl PluginLoader {
         let install_cmd = self.runtime.install_command();
         let install_args = self.runtime.install_args();
 
-        let status = tokio::process::Command::new(install_cmd)
-            .args(&install_args)
-            .current_dir(&npm_dir)
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .status()
-            .await?;
+        // Bounded: this shells out to the package manager over whatever proxy the
+        // environment carries, and it runs on the server's startup path. An install that
+        // never returned meant no port was ever bound, so every client that waits for
+        // readiness sat on a black screen until its own timeout.
+        let installed = tokio::time::timeout(
+            NPM_INSTALL_TIMEOUT,
+            tokio::process::Command::new(install_cmd)
+                .args(&install_args)
+                .current_dir(&npm_dir)
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .status(),
+        )
+        .await;
+
+        let status = match installed {
+            Ok(Ok(status)) => status,
+            Ok(Err(error)) => {
+                return Err(PluginLoaderError::NpmInstall(format!(
+                    "{install_cmd} install could not start: {error}"
+                )))
+            }
+            Err(_) => {
+                tracing::warn!(
+                    secs = NPM_INSTALL_TIMEOUT.as_secs(),
+                    "npm install timed out; continuing with whatever is already installed"
+                );
+                return Ok(());
+            }
+        };
 
         if !status.success() {
             return Err(PluginLoaderError::NpmInstall(format!(
@@ -325,6 +358,15 @@ impl PluginLoader {
 
     fn npm_dir(&self) -> PathBuf {
         npm_dir_path()
+    }
+
+    /// Whether `spec` already resolves inside the npm dir. Re-running the install for an
+    /// installed package put a package-manager fetch on the server's startup path every
+    /// single boot; with no usable upstream it stalled the bind long enough that the UI
+    /// sat on a black screen.
+    fn already_installed(&self, spec: &str) -> bool {
+        let name = parse_npm_spec(spec).0;
+        self.npm_dir().join("node_modules").join(name).is_dir()
     }
 }
 
