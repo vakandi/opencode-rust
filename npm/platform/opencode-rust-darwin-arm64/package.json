@@ -1,6 +1,6 @@
 {
   "name": "opencode-rust-darwin-arm64",
-  "version": "0.1.6",
+  "version": "0.1.2",
   "description": "Prebuilt OpenCodeRust binary for macOS (Apple Silicon)",
   "homepage": "https://github.com/vakandi/opencode-rust",
   "repository": {
