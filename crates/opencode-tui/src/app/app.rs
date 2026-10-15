@@ -11,7 +11,9 @@ use std::time::{Duration, Instant};
 use chrono::{TimeZone, Utc};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::api::{ApiClient, ApiMessage, McpStatusInfo, SessionInfo, SessionRevertInfo, ToolRank};
+use crate::api::{
+    AgentInfo, ApiClient, ApiMessage, McpStatusInfo, SessionInfo, SessionRevertInfo, ToolRank,
+};
 use crate::app::state::AppState;
 use crate::app::terminal;
 use crate::command::CommandAction;
@@ -2588,18 +2590,38 @@ impl App {
             self.agent_models = local_models.clone();
         }
 
+        // The local config answers immediately and holds every agent on disk. `/agent`
+        // can take longer than the client timeout, and when it did the dialog kept its
+        // three built-in placeholders, so Tab cycled a handful of agents while `/agents`
+        // — reading the same local config — listed them all.
+        let local_agents = locally_configured_agents();
+        if !local_agents.is_empty() {
+            self.set_agent_list(local_agents.clone(), had_local);
+        }
+
         let Some(client) = self.context.get_api_client() else {
             return;
         };
 
-        let Ok(agents) = client.list_agents() else {
+        let Ok(mut agents) = client.list_agents() else {
             return;
         };
+
+        // Plugin-injected agents only exist on the server; the local list cannot know them.
+        for local in local_agents {
+            if !agents.iter().any(|agent| agent.id == local.id) {
+                agents.push(local);
+            }
+        }
 
         if agents.is_empty() {
             return;
         }
 
+        self.set_agent_list(agents, had_local);
+    }
+
+    fn set_agent_list(&mut self, agents: Vec<AgentInfo>, had_local: bool) {
         let theme = self.context.theme.read().clone();
         let mut agent_names = Vec::new();
         let mut agent_models = HashMap::new();
@@ -4999,9 +5021,33 @@ mod wire_fold_tests {
     }
 }
 
-/// Agent -> model, straight from the config this process already loaded.
-fn locally_configured_agent_models() -> HashMap<String, String> {
+/// Every agent the local config defines, without asking the server.
+fn locally_configured_agents() -> Vec<AgentInfo> {
     let Ok(cwd) = std::env::current_dir() else {
+        return Vec::new();
+    };
+    let Ok(config) = opencode_config::load_config(&cwd) else {
+        return Vec::new();
+    };
+    let mut agents: Vec<AgentInfo> = opencode_agent::AgentRegistry::from_optional_config(Some(&config))
+        .list()
+        .into_iter()
+        .map(|agent| AgentInfo {
+            id: agent.name.clone(),
+            name: agent.name.clone(),
+            description: agent.description.clone(),
+            model: agent.model.as_ref().map(|model| {
+                format!("{}/{}", model.provider_id, model.model_id)
+            }),
+            model_preference: None,
+        })
+        .collect();
+    agents.sort_by(|a, b| a.id.cmp(&b.id));
+    agents
+}
+
+/// Agent -> model, straight from the config this process already loaded.
+fn locally_configured_agent_models() -> HashMap<String, String> {    let Ok(cwd) = std::env::current_dir() else {
         return HashMap::new();
     };
     let Ok(config) = opencode_config::load_config(&cwd) else {

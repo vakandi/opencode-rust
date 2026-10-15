@@ -193,17 +193,43 @@ impl PluginSystem {
     }
 
     pub async fn trigger(&self, context: HookContext) -> Vec<HookResult> {
-        let hooks = self.hooks.read().await;
-        let mut results = Vec::new();
+        // Clone the handler list and DROP the guard before awaiting any of them.
+        //
+        // Holding a read guard across `.await` is the deadlock this replaced: the lock is
+        // write-preferring, so one `register()` (a write) queues behind an in-flight
+        // handler and every LATER trigger — including the one the turn needs to reach the
+        // provider — blocks behind that writer forever. A stalled subprocess handler made
+        // that permanent instead of rare.
+        let hook_list: Vec<Arc<Hook>> = {
+            let hooks = self.hooks.read().await;
+            hooks
+                .get(&context.event)
+                .map(|list| list.iter().filter(|hook| hook.enabled).cloned().collect())
+                .unwrap_or_default()
+        };
 
-        if let Some(hook_list) = hooks.get(&context.event) {
-            for hook in hook_list {
-                if !hook.enabled {
-                    continue;
-                }
-                let result = (hook.handler)(context.clone()).await;
-                results.push(result);
+        let mut results = Vec::new();
+        for hook in hook_list {
+            tracing::debug!(hook = %hook.name, event = ?context.event, "plugin hook handler start");
+            let started = std::time::Instant::now();
+            let result = (hook.handler)(context.clone()).await;
+            let elapsed = started.elapsed();
+            if elapsed > std::time::Duration::from_secs(5) {
+                tracing::warn!(
+                    hook = %hook.name,
+                    event = ?context.event,
+                    elapsed_ms = elapsed.as_millis() as u64,
+                    "plugin hook handler was slow"
+                );
+            } else {
+                tracing::debug!(
+                    hook = %hook.name,
+                    event = ?context.event,
+                    elapsed_ms = elapsed.as_millis() as u64,
+                    "plugin hook handler done"
+                );
             }
+            results.push(result);
         }
 
         results

@@ -20,6 +20,9 @@ use crate::components::{Prompt, Sidebar};
 use crate::context::{AppContext, Message, MessagePart, MessageRole, SidebarMode};
 
 const SIDEBAR_WIDTH: u16 = 42;
+/// Below this width the sidebar is dropped instead of overlaid: an overlay this wide
+/// covers the transcript it is describing, so a narrow window gets the messages alone.
+const SIDEBAR_MIN_TERMINAL_WIDTH: u16 = 100;
 const HEADER_NARROW_THRESHOLD: u16 = 80;
 const THINKING_PREVIEW_LINES: usize = 2;
 const MOUSE_SCROLL_LINES: usize = 3;
@@ -68,6 +71,12 @@ impl SessionView {
     }
 
     pub fn render(&mut self, frame: &mut Frame, area: Rect, prompt: &Prompt) {
+        if area.width < SIDEBAR_MIN_TERMINAL_WIDTH {
+            self.sidebar_state.reset_hidden();
+            self.sidebar_open_button_area = None;
+            self.sidebar_close_button_area = None;
+            return self.render_main(frame, area, prompt);
+        }
         let show_sidebar = *self.context.show_sidebar.read();
         let sidebar_mode = self.context.sidebar_mode.read().clone();
         // Determine effective sidebar visibility (overlay on all widths)
@@ -223,17 +232,13 @@ impl SessionView {
                 ])
                 .split(area)
         } else {
-            // Follow content: prompt sits directly below rendered messages.
-            let max_messages_height = available_after_header_footer.saturating_sub(prompt_height);
-            let desired_messages_height = (self.rendered_line_count as u16)
-                .max(1)
-                .min(max_messages_height);
-
+            // The transcript takes every row the input does not need, so the input sits
+            // on the last line of the window instead of chasing the end of the content.
             Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
                     Constraint::Length(header_height),
-                    Constraint::Length(desired_messages_height),
+                    Constraint::Min(0),
                     Constraint::Length(session_footer_height.min(available_after_header)),
                     Constraint::Length(prompt_height),
                     Constraint::Min(0),

@@ -23,6 +23,20 @@ pub struct ProxyConfig {
     pub short_quarantine_ttl: Duration,
     pub enabled: bool,
     pub debug: bool,
+    /// Whether an adopted upstream must also be shown to deliver a streamed body
+    /// progressively. Off by default: the check costs one real completion per
+    /// candidate, and on a free tier that answers 429 to probes it concludes nothing.
+    pub stream_probe_enabled: bool,
+    pub stream_probe_target: String,
+    pub stream_probe_model: String,
+    /// Credential for the streaming probe. Empty means the probe cannot authenticate
+    /// and therefore never concludes — which is the safe default, because a verdict it
+    /// cannot earn must not be allowed to quarantine a working exit.
+    pub stream_probe_key: String,
+    pub stream_probe_timeout: Duration,
+    /// Below this gap between the first and last body chunk the response counts as
+    /// having been released in one piece, which is what breaks live streaming.
+    pub stream_probe_min_spread: Duration,
 }
 
 impl Default for ProxyConfig {
@@ -50,6 +64,12 @@ impl Default for ProxyConfig {
             short_quarantine_ttl: Duration::from_secs(10 * 60),
             enabled: true,
             debug: false,
+            stream_probe_enabled: false,
+            stream_probe_target: "opencode.ai/zen/v1/chat/completions".to_string(),
+            stream_probe_model: "space-bunny-free".to_string(),
+            stream_probe_key: String::new(),
+            stream_probe_timeout: Duration::from_secs(30),
+            stream_probe_min_spread: Duration::from_millis(250),
         }
     }
 }
@@ -66,6 +86,18 @@ impl ProxyConfig {
         }
         if std::env::var("OPENCODE_PROXY_DEBUG").is_ok() {
             cfg.debug = true;
+        }
+        if std::env::var("OPENCODE_PROXY_STREAM_PROBE").is_ok() {
+            cfg.stream_probe_enabled = true;
+        }
+        if let Ok(key) = std::env::var("OPENCODE_PROXY_STREAM_KEY") {
+            cfg.stream_probe_key = key.trim().to_string();
+        }
+        if let Ok(model) = std::env::var("OPENCODE_PROXY_STREAM_MODEL") {
+            let model = model.trim();
+            if !model.is_empty() {
+                cfg.stream_probe_model = model.to_string();
+            }
         }
         cfg.rotate_interval = Duration::from_secs(env_u64("OPENCODE_PROXY_ROTATE_SECS", 120));
         cfg.upstream_timeout = Duration::from_millis(env_u64(

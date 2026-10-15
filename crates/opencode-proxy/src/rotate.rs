@@ -22,7 +22,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::claims::ClaimLock;
-use crate::probe::{probe_upstream, ProbeOutcome};
+use crate::probe::{probe_streams, probe_upstream, ProbeOutcome, StreamOutcome};
 use crate::quarantine::now_secs;
 use crate::selection::order_candidates;
 use crate::state::ProxyState;
@@ -88,6 +88,16 @@ pub async fn rotate_session(state: &Arc<ProxyState>, session_id: &str) -> bool {
             tracing::info!(session = %session_id, upstream = %entry.key(), ?outcome, "candidate rejected by probe; trying the next");
             return rotate_after_failed_probe(state, session_id, &quarantined).await;
         }
+    }
+
+    // A working exit can still hold an SSE body and release it in one piece, which
+    // makes every turn look like it rendered instantly. Only a conclusive verdict may
+    // reject: an inconclusive one (429 on a free tier) must not quarantine a good IP.
+    if matches!(probe_streams(&upstream, &cfg).await, StreamOutcome::Buffers) {
+        tracing::info!(session = %session_id, upstream = %entry.key(), "candidate released the stream in one piece; skipping it");
+        state.note_dead_upstream(&entry.key(), cfg.short_quarantine_ttl);
+        release_reservation(state, session_id).await;
+        return rotate_after_failed_probe(state, session_id, &quarantined).await;
     }
 
     if let Err(error) = crate::pool::stamp(&state.pool_path, &entry.host, entry.port, now_secs()) {
@@ -157,6 +167,13 @@ async fn rotate_after_failed_probe(
             }
         }
 
+        if matches!(probe_streams(&entry.upstream(), &cfg).await, StreamOutcome::Buffers) {
+            tracing::info!(session = %session_id, upstream = %entry.key(), "fallback candidate released the stream in one piece");
+            state.note_dead_upstream(&entry.key(), cfg.short_quarantine_ttl);
+            release_reservation(state, session_id).await;
+            continue;
+        }
+
         let _ = crate::pool::stamp(&state.pool_path, &entry.host, entry.port, now_secs());
         let changed = state.egress_for(session_id).map(|e| e.upstream.key()) != Some(entry.key());
         state.adopt_for_session(session_id, entry.upstream(), index, now_secs());
@@ -210,6 +227,12 @@ pub async fn rotate_once(state: &Arc<ProxyState>) -> bool {
                 tracing::debug!(upstream = %entry.key(), ?outcome, "candidate rejected by probe");
                 continue;
             }
+        }
+
+        if matches!(probe_streams(&upstream, &cfg).await, StreamOutcome::Buffers) {
+            tracing::info!(upstream = %entry.key(), "candidate released the stream in one piece; skipping it");
+            state.note_dead_upstream(&entry.key(), cfg.short_quarantine_ttl);
+            continue;
         }
 
         // Adopted. Stamp, count, and announce.

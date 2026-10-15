@@ -4,7 +4,7 @@
 //! mirroring the MCP stdio transport pattern.
 
 use std::process::Stdio;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -141,6 +141,14 @@ pub struct PluginSubprocess {
     auth_meta: Option<AuthMeta>,
     /// RPC call timeout.
     timeout: Duration,
+    /// Budget for a hook once the host is warm. `initialize` keeps the longer
+    /// `timeout` because it pays for process spawn and module import; a hook is pure
+    /// work inside an already-running process, so a hook still running after this is
+    /// not slow, it is stuck.
+    hook_timeout: Duration,
+    /// Set once a call misses its deadline: the host stopped draining its pipes, so
+    /// every later call would queue behind the same dead transport.
+    wedged: Arc<AtomicBool>,
 }
 
 impl PluginSubprocess {
@@ -188,6 +196,8 @@ impl PluginSubprocess {
             tools: std::collections::HashMap::new(),
             auth_meta: None,
             timeout: Duration::from_secs(30),
+            hook_timeout: Duration::from_secs(10),
+            wedged: Arc::new(AtomicBool::new(false)),
         };
 
         // Send initialize
@@ -314,7 +324,7 @@ impl PluginSubprocess {
         });
 
         let rpc_guard = self.rpc_lock.clone().lock_owned().await;
-        self.write_request(id, "auth.fetch.stream", Some(params))
+        self.write_request(id, "auth.fetch.stream", Some(params), self.timeout)
             .await?;
 
         let (start_tx, start_rx) = oneshot::channel::<
@@ -453,14 +463,31 @@ impl PluginSubprocess {
         method: &str,
         params: Option<Value>,
     ) -> Result<T, PluginSubprocessError> {
-        let _rpc_guard = self.rpc_lock.lock().await;
+        if self.wedged.load(Ordering::Relaxed) {
+            return Err(PluginSubprocessError::Timeout);
+        }
+        let budget = if method == "initialize" {
+            self.timeout
+        } else {
+            self.hook_timeout
+        };
+        // Every wait in a call is bounded. An unbounded one is what made a busy plugin
+        // host a process-wide hang instead of one failed hook: it held the stdin mutex
+        // while the peer never drained it, and every later call queued behind that write.
+        let _rpc_guard = match tokio::time::timeout(budget, self.rpc_lock.lock()).await {
+            Ok(guard) => guard,
+            Err(_) => return Err(self.mark_wedged(method, "rpc lock", budget)),
+        };
         let id = self.next_id();
-        self.write_request(id, method, params).await?;
+        tracing::debug!(method, id, plugin = %self.name, "plugin rpc send");
+        self.write_request(id, method, params, budget).await?;
+        tracing::debug!(method, id, plugin = %self.name, "plugin rpc sent, awaiting response");
 
         // Read response with timeout
-        let response = tokio::time::timeout(self.timeout, self.read_response_for_id(id))
-            .await
-            .map_err(|_| PluginSubprocessError::Timeout)??;
+        let response = match tokio::time::timeout(budget, self.read_response_for_id(id)).await {
+            Ok(response) => response?,
+            Err(_) => return Err(self.mark_wedged(method, "response", budget)),
+        };
 
         if let Some(err) = response.error {
             return Err(err.into());
@@ -475,15 +502,39 @@ impl PluginSubprocess {
         id: u64,
         method: &str,
         params: Option<Value>,
+        budget: Duration,
     ) -> Result<(), PluginSubprocessError> {
         let request = RpcRequest::new(id, method, params);
         let content = serde_json::to_string(&request)?;
         let frame = format!("Content-Length: {}\r\n\r\n{}", content.len(), content);
 
-        let mut stdin = self.stdin.lock().await;
-        stdin.write_all(frame.as_bytes()).await?;
-        stdin.flush().await?;
-        Ok(())
+        let written = async {
+            let mut stdin = self.stdin.lock().await;
+            stdin.write_all(frame.as_bytes()).await?;
+            stdin.flush().await
+        };
+        match tokio::time::timeout(budget, written).await {
+            Ok(result) => result.map_err(PluginSubprocessError::from),
+            Err(_) => Err(self.mark_wedged(method, "stdin write", budget)),
+        }
+    }
+
+    /// Latch the transport off after a missed deadline and report why, once.
+    ///
+    /// The host is a separate process that cannot be recovered from here, and a busy one
+    /// keeps missing every deadline — so it is taken out of rotation instead of being
+    /// retried on every hook. Callers see a timeout and carry on.
+    fn mark_wedged(&self, method: &str, stage: &str, budget: Duration) -> PluginSubprocessError {
+        if !self.wedged.swap(true, Ordering::Relaxed) {
+            tracing::warn!(
+                plugin = %self.name,
+                method,
+                stage,
+                timeout_ms = budget.as_millis() as u64,
+                "plugin host stopped responding; its hooks are disabled for this process"
+            );
+        }
+        PluginSubprocessError::Timeout
     }
 
     async fn read_response_for_id(

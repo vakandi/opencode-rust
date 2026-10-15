@@ -105,6 +105,103 @@ pub async fn probe_upstream(upstream: &Upstream, cfg: &ProxyConfig) -> ProbeOutc
     }
 }
 
+/// Whether an exit delivers a streaming body incrementally.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StreamOutcome {
+    /// The body arrived progressively: the first chunk landed well before the last.
+    Streams,
+    /// The whole body was released in one piece, so a turn can only ever render complete.
+    Buffers,
+    /// The check could not conclude — rate limited, refused, or no bytes at all.
+    Unknown,
+}
+
+impl StreamOutcome {
+    /// Only a conclusive verdict may act on an upstream. An unknown verdict is the
+    /// common case on a free tier that answers 429 to a probe, and treating that as
+    /// "buffers" would quarantine a fleet of working exits.
+    pub fn is_conclusive(self) -> bool {
+        matches!(self, StreamOutcome::Streams | StreamOutcome::Buffers)
+    }
+}
+
+/// Ask the exit for a streamed answer and time the chunks.
+///
+/// A residential proxy that completes CONNECT and TLS can still hold the response body
+/// and release it in one piece when the upstream goes quiet. Every request then succeeds
+/// and the UI paints the finished turn, which is indistinguishable from a model that
+/// answers instantly — and the `/models` probe cannot see it, because that body is small
+/// enough that any working proxy returns it whole.
+pub async fn probe_streams(upstream: &Upstream, cfg: &ProxyConfig) -> StreamOutcome {
+    if !cfg.stream_probe_enabled || cfg.stream_probe_key.is_empty() {
+        return StreamOutcome::Unknown;
+    }
+    let client = match client_for(upstream, cfg) {
+        Ok(client) => client,
+        Err(_) => return StreamOutcome::Unknown,
+    };
+    let url = format!("https://{}", cfg.stream_probe_target.trim_start_matches("https://"));
+    let body = serde_json::json!({
+        "model": cfg.stream_probe_model,
+        "messages": [{"role": "user", "content": "Count from 1 to 10."}],
+        "stream": true,
+        "max_tokens": 24,
+    });
+
+    let mut response = match client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", cfg.stream_probe_key))
+        .header("Accept", "text/event-stream")
+        .timeout(cfg.stream_probe_timeout)
+        .json(&body)
+        .send()
+        .await
+    {
+        Ok(response) => response,
+        Err(_) => return StreamOutcome::Unknown,
+    };
+    if !response.status().is_success() {
+        // 429 included: the exit works, the free tier is simply busy right now.
+        tracing::debug!(upstream = %upstream.key(), status = %response.status(), "stream probe inconclusive");
+        return StreamOutcome::Unknown;
+    }
+
+    // `Response::chunk()` rather than `bytes_stream()`: this crate has no futures
+    // dependency, and one chunk at a time is all the timing needs.
+    let mut content_seen = false;
+    let mut chunks = 0usize;
+    let mut first_byte: Option<std::time::Instant> = None;
+    let mut last_byte: Option<std::time::Instant> = None;
+    loop {
+        let bytes = match response.chunk().await {
+            Ok(Some(bytes)) => bytes,
+            Ok(None) => break,
+            Err(_) => break,
+        };
+        let now = std::time::Instant::now();
+        first_byte.get_or_insert(now);
+        last_byte = Some(now);
+        if !content_seen && bytes.windows(6).any(|w| w == b"content") {
+            content_seen = true;
+            chunks += 1;
+        }
+    }
+    if chunks < 2 || !content_seen {
+        return StreamOutcome::Unknown;
+    }
+    let (Some(first), Some(last)) = (first_byte, last_byte) else {
+        return StreamOutcome::Unknown;
+    };
+    let spread = last.duration_since(first);
+    if spread >= cfg.stream_probe_min_spread {
+        tracing::info!(upstream = %upstream.key(), spread_ms = spread.as_millis() as u64, "stream probe: incremental");
+        StreamOutcome::Streams
+    } else {
+        tracing::info!(upstream = %upstream.key(), spread_ms = spread.as_millis() as u64, "stream probe: body released at once");
+        StreamOutcome::Buffers
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

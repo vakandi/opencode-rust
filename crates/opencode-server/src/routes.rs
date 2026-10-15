@@ -3,7 +3,7 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         Extension, Path, Query, State,
     },
-    http::{header::CACHE_CONTROL, HeaderValue, Request, StatusCode},
+    http::{header::CACHE_CONTROL, HeaderMap, HeaderValue, Request, StatusCode},
     middleware::{self, Next},
     response::{sse::KeepAlive, Html, IntoResponse, Response},
     response::sse::{Event, Sse},
@@ -1112,15 +1112,54 @@ async fn send_message(
     Ok(Json(envelope))
 }
 
+#[derive(Deserialize, Default)]
+struct ListMessagesQuery {
+    limit: Option<usize>,
+    before: Option<String>,
+}
+
+/// `GET /session/{id}/message` — the tail page, plus `before` to walk backwards.
+///
+/// Both params are optional, so the no-query response is byte-identical to the old
+/// whole-transcript body: every existing caller keeps working unchanged. The
+/// `x-total-messages` header counts the whole session, not the page, so a client can
+/// size its scrollbar without downloading everything.
 async fn list_messages(
     State(state): State<Arc<ServerState>>,
     Path(session_id): Path<String>,
-) -> Result<Json<Vec<serde_json::Value>>> {
+    Query(q): Query<ListMessagesQuery>,
+) -> Result<(HeaderMap, Json<Vec<serde_json::Value>>)> {
     let sessions = state.sessions.lock().await;
     let session = sessions
         .get(&session_id)
         .ok_or_else(|| ApiError::SessionNotFound(session_id.clone()))?;
-    Ok(Json(crate::events::messages_to_ts_json(session)))
+
+    let all = crate::events::messages_to_ts_json(session);
+    let total = all.len();
+
+    let mut window: &[serde_json::Value] = &all;
+    if let Some(before) = q.before.as_deref().filter(|s| !s.is_empty()) {
+        window = match all
+            .iter()
+            .position(|m| m.get("info").and_then(|i| i.get("id")).and_then(|i| i.as_str()) == Some(before))
+        {
+            Some(idx) => &all[..idx],
+            // Unknown cursor: an empty page, never the whole transcript. Falling back
+            // to "everything" here would let one bad id turn a paged fetch back into
+            // the full download the paging exists to avoid.
+            None => &[],
+        };
+    }
+
+    let take = q.limit.unwrap_or(usize::MAX).min(window.len());
+    let page = window[window.len() - take..].to_vec();
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "x-total-messages",
+        HeaderValue::from_str(&total.to_string()).unwrap_or(HeaderValue::from_static("0")),
+    );
+    Ok((headers, Json(page)))
 }
 
 async fn delete_message(
