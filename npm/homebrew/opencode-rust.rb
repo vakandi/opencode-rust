@@ -6,18 +6,18 @@
 # deliberately refuses to do inside a postinstall script.
 
 class OpencodeRust < Formula
-  desc "The open source AI coding agent, in Rust"
+  desc "Open source AI coding agent, in Rust"
   homepage "https://github.com/vakandi/opencode-rust"
   url "https://github.com/vakandi/opencode-rust.git",
-      revision: "0c72724ddb4b564249fdb062fdac57baa9cedcd8"
-  version "0.1.4"
+      revision: "84aba76e054332fc50bdde162d742c0a71343de2"
+  version "0.1.3"
   license "MIT"
   head "https://github.com/vakandi/opencode-rust.git", branch: "main"
 
-  depends_on "rust" => :build
-  depends_on "pkg-config" => :build
   # openssl-sys and onig_sys link against system libraries rather than vendoring them.
   depends_on "openssl" => :build
+  depends_on "pkg-config" => :build
+  depends_on "rust" => :build
   depends_on "node" => :recommended
 
   def install
