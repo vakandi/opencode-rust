@@ -1,33 +1,84 @@
 name: Publish to npm
 
-# Trusted publishing: npm's GitHub OIDC handshake replaces the long-lived token and the
-# per-publish 2FA code. The workflow below authenticates with a short-lived JWT, so
-# there is no secret in this repo and nothing to rotate.
-#
-# Trusted publishing must be configured once per package on npmjs.com
-# (package -> Settings -> Trusted Publisher), pointing at vakandi/opencode-rust and this
-# file's name. This workflow only works after that is done.
-#
-# Platform order matters: opencode-rust-* declare opencode-rust as an optional
-# dependency, and npm resolves it from the registry, so the binary package has to be
-# public before the launcher package is useful.
-
 on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:
+
+permissions:
+  contents: write # attach release assets
+  id-token: write   # required for the npm OIDC exchange
+
+env:
+  TAG: ${{ github.ref_name }}
+  VERSION: ${{ github.ref_name }}
 
 jobs:
+  # One npm package, every platform. The binary ships as a release asset and install.js
+  # fetches the one matching the host. Platform-scoped npm packages were tried and
+  # abandoned: each is a 404 until someone creates it, and a missing one fails silently
+  # as optionalDependencies rather than loudly.
+  assets:
+    name: build ${{ matrix.asset }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { asset: opencode-darwin-arm64,        os: macos-14,    target: aarch64-apple-darwin,     binary: opencode }
+          - { asset: opencode-darwin-x64,          os: macos-13,    target: x86_64-apple-darwin,      binary: opencode }
+          - { asset: opencode-linux-x64-gnu,       os: ubuntu-22.04, target: x86_64-unknown-linux-gnu,  binary: opencode }
+          - { asset: opencode-linux-x64-musl,      os: ubuntu-22.04, target: x86_64-unknown-linux-musl, binary: opencode }
+          - { asset: opencode-linux-arm64-gnu,     os: ubuntu-22.04, target: aarch64-unknown-linux-gnu, binary: opencode, cross: true }
+          - { asset: opencode-win32-x64-msvc.exe,  os: windows-2022, target: x86_64-pc-windows-msvc,    binary: opencode.exe }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: "Build (native target)"
+        if: ${{ !matrix.cross }}
+        run: cargo build --release --bin opencode --target ${{ matrix.target }}
+
+      - name: "Build (cross; the runner has no aarch64 linker)"
+        if: ${{ matrix.cross }}
+        run: cargo install cross --locked && cross build --release --bin opencode --target ${{ matrix.target }}
+
+      - name: Collect
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "dist/${{ matrix.asset }}"
+          test -s "dist/${{ matrix.asset }}" || { echo "::error::binary missing for ${{ matrix.target }}"; exit 1; }
+          cd dist && sha256sum "${{ matrix.asset }}" > "${{ matrix.asset }}.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/*
+
+  attach:
+    needs: assets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --generate-notes --title "$TAG"
+          gh release upload "$TAG" dist/* --clobber
+          echo "attached:"; ls -la dist
+
   publish:
-    # macos-14 is Apple Silicon. `opencode-rust-darwin-arm64` carries `os: [darwin]` /
-    # `cpu: [arm64]`, and a macOS binary needs the macOS SDK, so it cannot be produced on
-    # the ubuntu runner. Publishing there shipped a 340-byte tarball containing only
-    # package.json.
-    runs-on: macos-14
-    permissions:
-      contents: read
-      id-token: write # required for the npm OIDC exchange
+    needs: attach
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -36,41 +87,9 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Build the native binary
-        run: |
-          cargo build --release --bin opencode
-          mkdir -p npm/platform/opencode-rust-darwin-arm64/bin
-          cp target/release/opencode npm/platform/opencode-rust-darwin-arm64/bin/opencode
-
-      # `npm/platform/*/bin/` is gitignored, so a fresh checkout has no binary and
-      # `files: ["bin/opencode"]` silently matches nothing. Fail here rather than
-      # publish an empty package again.
-      - name: Fail if the binary is missing from the tarball
-        id: binary_gate
-        continue-on-error: true
-        working-directory: npm/platform/opencode-rust-darwin-arm64
-        run: |
-          test -s bin/opencode || { echo "::error::bin/opencode is missing or empty"; exit 1; }
-          npm pack --dry-run --json | node -e '
-            const t = JSON.parse(require("fs").readFileSync(0,"utf8"))[0];
-            const n = t.files.length;
-            console.log("tarball files:", n);
-            if (n < 2) { console.error("::error::tarball has no binary, only package.json"); process.exit(1); }
-          '
-
-      - name: Publish the native binary
-        id: binary
-        continue-on-error: true
-        working-directory: npm/platform/opencode-rust-darwin-arm64
-        run: npm publish --provenance --access public
-
       - name: Publish the launcher
         working-directory: npm
         run: npm publish --provenance --access public
 
-      - name: Confirm both are on the registry
-        run: |
-          printf 'opencode-rust -> '; npm view opencode-rust@0.1.2 version
-          printf 'opencode-rust-darwin-arm64 -> '; npm view opencode-rust-darwin-arm64@0.1.2 version || echo 'unavailable (non-fatal)'
+      - name: Confirm it is on the registry
+        run: npm view "opencode-rust@$VERSION" version

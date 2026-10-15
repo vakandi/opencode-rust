@@ -4,9 +4,14 @@
 // Resolves a native binary for the host platform and writes it to lib/resolved.json.
 // It does NOT compile. Compiling at install time would force every user to have a
 // ~500MB Rust toolchain and wait several minutes, and long postinstall scripts are
-// routinely blocked by security scanners. Prebuilt binaries come from the
-// platform-scoped optionalDependencies; building from source is an explicit
+// routinely blocked by security scanners. The prebuilt binary is fetched from the GitHub
+// release for the detected platform; building from source is an explicit
 // `npm run build:from-source`, not something that happens behind someone's back.
+//
+// One npm package, every platform. The alternatives were tried: platform-scoped
+// optionalDependencies need one npm package per target, and every extra package is a
+// 404 until someone remembers to create it — which is exactly how a release shipped
+// with an `npm i` that completed in one second and produced no working binary.
 //
 // Every step is coloured, and every failure is actionable.
 
@@ -60,11 +65,17 @@ function binaryName() {
   return process.platform === 'win32' ? 'opencode.exe' : 'opencode';
 }
 
+// musl only exists on Linux, and it is the ABSENCE of a glibc runtime version that
+// identifies it. Grepping the whole report header for the string "musl" matched
+// unrelated text — it reported true on macOS — which on a glibc Linux host would have
+// selected the musl asset and installed a binary that cannot run.
 function isMusl() {
+  if (process.platform !== 'linux') return false;
   if (process.report && process.report.getReport) {
     try {
-      return /musl/i.test(JSON.stringify(process.report.getReport().header));
-    } catch { /* fall through */ }
+      const header = process.report.getReport().header || {};
+      if (header.glibcVersionRuntime) return false;
+    } catch { /* fall through to the ldd check */ }
   }
   try {
     return fs.readFileSync('/usr/bin/ldd', 'utf8').includes('musl');
@@ -115,7 +126,7 @@ function candidatePaths(name) {
   return out;
 }
 
-function findBinary() {
+async function findBinary() {
   const root = path.join(__dirname, '..');
   const name = binaryName();
 
@@ -132,14 +143,137 @@ function findBinary() {
   const local = path.join(root, 'bin', name);
   if (fs.existsSync(local)) return local;
 
-  // 3. The platform-scoped optional dependency.
+  // 3. A platform binary left behind by an earlier install (npm does not always run
+  //    postinstall again on a cache hit).
   if (platformSuffix()) {
     for (const p of candidatePaths(name)) {
       if (fs.existsSync(p)) return p;
     }
   }
 
+  // 4. Download the release asset for this platform.
+  return await downloadForPlatform(name);
+}
+
+// The GitHub-release asset suffix for this host. Returns null for a platform the project
+// does not build, so the caller can say so instead of issuing a request that 404s.
+function targetSuffix() {
+  const arch = process.arch;
+  if (process.platform === 'darwin') {
+    if (arch === 'arm64') return 'darwin-arm64';
+    if (arch === 'x64') return 'darwin-x64';
+    return null;
+  }
+  if (process.platform === 'linux') {
+    const musl = isMusl();
+    if (arch === 'x64') return musl ? 'linux-x64-musl' : 'linux-x64-gnu';
+    if (arch === 'arm64') return musl ? 'linux-arm64-musl' : 'linux-arm64-gnu';
+    return null;
+  }
+  if (process.platform === 'win32') {
+    return arch === 'x64' ? 'win32-x64-msvc' : null;
+  }
   return null;
+}
+
+function packageVersion() {
+  try {
+    return require(path.join(__dirname, 'package.json')).version;
+  } catch {
+    return '0.0.0';
+  }
+}
+
+async function downloadForPlatform(name) {
+  const suffix = targetSuffix();
+  if (!suffix) return null;
+
+  const asset = `opencode-${suffix}${process.platform === 'win32' ? '.exe' : ''}`;
+  const base = `https://github.com/vakandi/opencode-rust/releases/download/v${packageVersion()}`;
+  const url = `${base}/${asset}`;
+
+  const dir = path.join(__dirname, 'lib');
+  fs.mkdirSync(dir, { recursive: true });
+  const dest = path.join(dir, asset);
+
+  step(`downloading ${c.gray(url)}`);
+
+  // Fetch the checksum first, but treat its absence as non-fatal: a release published
+  // before this pipeline existed has no `.sha256`, and that must not fail the install.
+  let expected = null;
+  try {
+    const text = await fetchBinary(`${base}/${asset}.sha256`, 8000);
+    expected = text.split(/\s+/)[0];
+  } catch {
+    warn(`no checksum published for ${asset}; continuing without one`);
+  }
+
+  try {
+    await fetchBinary(url, 180000, dest);
+  } catch (error) {
+    fail(`download failed: ${error.message}`);
+    return null;
+  }
+
+  if (expected) verifyDigest(dest, expected);
+  return dest;
+}
+
+// Minimal GET with redirect following, using only Node built-ins so the postinstall has
+// no dependency that could be missing or hoisted somewhere unexpected.
+function fetchBinary(url, timeoutMs, dest) {
+  const https = require('https');
+  return new Promise((resolve, reject) => {
+    const request = (target, redirects) => {
+      const req = https.get(
+        target,
+        { headers: { 'user-agent': 'opencode-rust-installer' }, timeout: timeoutMs },
+        (res) => {
+          if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            res.resume();
+            if (redirects >= 5) return reject(new Error('too many redirects'));
+            return request(new URL(res.headers.location, target).toString(), redirects + 1);
+          }
+          if (res.statusCode !== 200) {
+            res.resume();
+            return reject(new Error(`HTTP ${res.statusCode} for ${target}`));
+          }
+          if (!dest) {
+            res.setEncoding('utf8');
+            let body = '';
+            res.on('data', (chunk) => (body += chunk));
+            res.on('end', () => resolve(body));
+            return;
+          }
+          const out = fs.createWriteStream(dest, { mode: 0o755 });
+          res.pipe(out);
+          out.on('finish', () => {
+            try {
+              fs.chmodSync(dest, 0o755);
+            } catch { /* non-fatal: exec bit is best effort on odd filesystems */ }
+            resolve(dest);
+          });
+          out.on('error', reject);
+        },
+      );
+      req.on('timeout', () => req.destroy(new Error('timed out')));
+      req.on('error', reject);
+    };
+    request(url, 0);
+  });
+}
+
+function verifyDigest(file, expected) {
+  if (!expected || !/^[0-9a-f]{64}$/i.test(expected)) return;
+  const crypto = require('crypto');
+  const actual = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+  if (actual !== expected.toLowerCase()) {
+    fail(`checksum mismatch for ${path.basename(file)}`);
+    fail(`  expected ${expected}`);
+    fail(`  actual   ${actual}`);
+    process.exit(1);
+  }
+  ok(`checksum verified ${c.gray(expected.slice(0, 16))}…`);
 }
 
 // npm's staging flow strips `os`/`cpu` from the published manifest, which makes every
@@ -187,17 +321,17 @@ function writeResolved(binPath) {
   );
 }
 
-function main() {
+async function main() {
   const target = `${process.platform}-${process.arch}${isMusl() ? '-musl' : ''}`;
   step(`opencode-rust ${c.bold('install')} ${c.gray(`on ${target} (node ${process.version}, ${os.platform()})`)}`);
 
-  const binPath = findBinary();
+  const binPath = await findBinary();
 
   if (!binPath) {
-    warn(`no prebuilt binary published yet for ${c.bold(target)}`);
+    warn(`no prebuilt binary available for ${c.bold(target)}`);
     console.log('');
-    console.log(`  ${c.gray('This is not a failure of the install — the package is on npm,')}`);
-    console.log(`  ${c.gray('but no binary has been uploaded for your platform. Two options:')}`);
+    console.log(`  ${c.gray('The npm package installed, but no release binary could be fetched')}`);
+    console.log(`  ${c.gray('for your platform. Two options:')}`);
     console.log('');
     console.log(`    ${c.cyan('1.')} brew install vakandi/tap/opencode-rust`);
     console.log(`    ${c.gray('      (macOS and Linux, builds from source on your machine)')}`);
@@ -245,4 +379,7 @@ function main() {
   done();
 }
 
-main();
+main().catch((error) => {
+  fail(error && error.stack ? error.stack : String(error));
+  process.exit(1);
+});
