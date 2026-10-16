@@ -70,7 +70,9 @@ pub struct ModelInfo {
     pub limit: ModelLimit,
     #[serde(default)]
     pub modalities: Option<ModelModalities>,
-    #[serde(default)]
+    /// models.dev used to send a bool here; it now sends a rich object.
+    /// Accept either so the catalogue still deserialises.
+    #[serde(default, deserialize_with = "flexible_experimental")]
     pub experimental: Option<bool>,
     #[serde(default)]
     pub status: Option<String>,
@@ -254,4 +256,59 @@ pub fn supports_function_calling(model_id: &str) -> bool {
     let lower = model_id.to_lowercase();
 
     !lower.contains("embedding") && !lower.contains("whisper") && !lower.contains("tts")
+}
+/// models.dev sends "experimental" either as a bool or as a mode map.
+/// Collapse the map to true: any content means the model is flagged experimental.
+fn flexible_experimental<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Option::<serde_json::Value>::deserialize(deserializer)?
+        .map(|v| !v.is_null() && v != serde_json::Value::Bool(false)))
+}
+
+
+#[cfg(test)]
+mod models_dev_compat_tests {
+    use super::ModelInfo;
+    use serde_json::json;
+
+    fn minimal() -> serde_json::Value {
+        json!({
+            "id": "vendor/model",
+            "name": "Vendor Model",
+            "attachment": true,
+            "reasoning": false,
+            "temperature": true,
+            "tool_call": true,
+            "release_date": "2026-01-01",
+            "knowledge": "2026-01",
+            "modalities": { "input": ["text"], "output": ["text"] },
+            "open_weights": false,
+            "limit": { "context": 128000, "output": 8192 },
+            "cost": { "input": 1.0, "output": 2.0 }
+        })
+    }
+
+    #[test]
+    fn experimental_accepts_legacy_bool() {
+        let mut v = minimal();
+        v["experimental"] = json!(true);
+        let m: ModelInfo = serde_json::from_value(v).expect("bool form must still parse");
+        assert_eq!(m.experimental, Some(true));
+    }
+
+    #[test]
+    fn experimental_accepts_new_object_form() {
+        let mut v = minimal();
+        v["experimental"] = json!({ "reasoning": true, "tool_call": false });
+        let m: ModelInfo = serde_json::from_value(v).expect("object form must parse");
+        assert_eq!(m.experimental, Some(true));
+    }
+
+    #[test]
+    fn experimental_absent_is_none() {
+        let m: ModelInfo = serde_json::from_value(minimal()).expect("absent must parse");
+        assert_eq!(m.experimental, None);
+    }
 }

@@ -156,9 +156,13 @@ impl Default for InterleavedConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ModelCostCache {
+    /// models.dev exposes these as `cache_read` / `cache_write`; accept both spellings
+    /// so a catalogue refresh does not deserialise to nothing.
+    #[serde(alias = "cache_read", default)]
     pub read: f64,
+    #[serde(alias = "cache_write", default)]
     pub write: f64,
 }
 
@@ -173,6 +177,9 @@ pub struct ModelCostOver200K {
 pub struct ProviderModelCost {
     pub input: f64,
     pub output: f64,
+    /// models.dev no longer emits a nested `cache` object; tolerate its absence
+    /// instead of rejecting the whole catalogue.
+    #[serde(default)]
     pub cache: ModelCostCache,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub experimental_over_200k: Option<ModelCostOver200K>,
