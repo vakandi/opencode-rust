@@ -1681,6 +1681,7 @@ pub struct SessionPromptRequest {
     pub agent: Option<String>,
     pub command: Option<String>,
     pub arguments: Option<String>,
+    pub system: Option<String>,
 }
 
 /// Run one full assistant turn for a session: stream it, persist it, then go idle.
@@ -1699,6 +1700,7 @@ async fn run_prompt_turn(
     model_id: String,
     variant: Option<String>,
     agent: Option<String>,
+    caller_system: Option<String>,
 ) {
     let mut session = {
         let sessions = state.sessions.lock().await;
@@ -1781,6 +1783,12 @@ async fn run_prompt_turn(
         } else {
             tracing::warn!(agent = agent_name, "no instructions found for agent; running on the harness prompt alone");
         }
+    }
+    // The caller's own contract goes last of all: it carries the task's mandatory
+    // vocabulary (which tool to publish to, which exact strings to emit), so it must
+    // outrank both the harness text and the agent's general instructions.
+    if let Some(caller_system) = caller_system.as_deref() {
+        system_prompt = format!("{}\n\n{}", system_prompt, caller_system);
     }
     let system_prompt = Some(system_prompt);
 
@@ -1909,6 +1917,7 @@ async fn session_prompt(
     let task_variant = req.variant.clone();
     let task_agent = req.agent.clone();
     let task_model = model_id.clone();
+    let task_system = req.system.clone();
     tokio::spawn(run_prompt_turn(
         task_state,
         session_id,
@@ -1918,6 +1927,7 @@ async fn session_prompt(
         task_model,
         task_variant,
         task_agent,
+        task_system,
     ));
 
     Ok(Json(serde_json::json!({
@@ -2092,6 +2102,10 @@ pub struct PromptAsyncRequest {
     /// route runs the turn, so it is the one that has to honour it.
     pub agent: Option<String>,
     pub variant: Option<String>,
+    /// Caller-supplied system prompt. Kept separate from the agent's own instructions,
+    /// which are appended by `run_prompt_turn`: this one states the task contract (which
+    /// tool to publish to, which output vocabulary) and must win over generic text.
+    pub system: Option<String>,
 }
 
 fn text_from_parts(parts: &[TextPartInput]) -> String {
@@ -2168,6 +2182,7 @@ async fn prompt_async(
         model_id,
         req.variant.clone(),
         req.agent.clone(),
+        req.system.clone(),
     ));
 
     Ok(Json(serde_json::json!({
