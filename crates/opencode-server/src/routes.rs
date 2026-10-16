@@ -1760,11 +1760,29 @@ async fn run_prompt_turn(
         &provider_id,
         session.directory.clone(),
     );
-    let system_prompt = Some(format!(
+    let mut system_prompt = format!(
         "{}\n\n{}",
         opencode_session::system::SystemPrompt::for_model(&model_id),
         opencode_session::system::SystemPrompt::environment(&environment),
-    ));
+    );
+    // `agent` used to reach only metadata and permissions, never the model: the turn ran
+    // with the generic harness prompt alone, so an agent whose whole contract is a
+    // mandatory output format was ignored. Appended last so the agent's own
+    // instructions take precedence over the generic harness text.
+    if let Some(agent_name) = agent.as_deref() {
+        let agent_config = std::env::current_dir()
+            .ok()
+            .and_then(|cwd| load_config(&cwd).ok());
+        if let Some(instructions) = AgentRegistry::from_optional_config(agent_config.as_ref())
+            .get_resolved(agent_name)
+            .and_then(|info| info.system_prompt.clone())
+        {
+            system_prompt = format!("{}\n\n{}", system_prompt, instructions);
+        } else {
+            tracing::warn!(agent = agent_name, "no instructions found for agent; running on the harness prompt alone");
+        }
+    }
+    let system_prompt = Some(system_prompt);
 
     let prompt_runner = opencode_session::SessionPrompt::new(Arc::new(RwLock::new(
         opencode_session::SessionStateManager::new(),
@@ -2070,6 +2088,10 @@ pub struct PromptAsyncRequest {
     pub message: Option<String>,
     pub parts: Option<Vec<TextPartInput>>,
     pub model: Option<serde_json::Value>,
+    /// `POST /session/{id}/message` records `agent` but never runs a turn; this
+    /// route runs the turn, so it is the one that has to honour it.
+    pub agent: Option<String>,
+    pub variant: Option<String>,
 }
 
 fn text_from_parts(parts: &[TextPartInput]) -> String {
@@ -2144,8 +2166,8 @@ async fn prompt_async(
         provider,
         provider_id,
         model_id,
-        None,
-        None,
+        req.variant.clone(),
+        req.agent.clone(),
     ));
 
     Ok(Json(serde_json::json!({
