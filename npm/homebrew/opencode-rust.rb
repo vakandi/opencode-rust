@@ -9,8 +9,8 @@ class OpencodeRust < Formula
   desc "Open source AI coding agent, in Rust"
   homepage "https://github.com/vakandi/opencode-rust"
   url "https://github.com/vakandi/opencode-rust.git",
-      revision: "84aba76e054332fc50bdde162d742c0a71343de2"
-  version "0.1.3"
+      revision: "3e2398a2dd6fe0b2b2b60fec8b8e595d70200847"
+  version "0.1.5"
   license "MIT"
   head "https://github.com/vakandi/opencode-rust.git", branch: "main"
 
