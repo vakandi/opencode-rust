@@ -60,7 +60,9 @@ const NEVER_ROTATE: &[&str] = &[
     "encrypted_content was not issued",
 ];
 
-/// The provider refused the *network* the request came from.
+/// The provider refused the *network* the request came from. The free tier is metered
+/// per IP, so the same account answers 429 from one exit and 200 from another — that
+/// is why these rotate rather than fail.
 const EGREGIOUS_EGRESS: &[&str] = &[
     "FreeTierError",
     "abusive traffic from this IP",
@@ -104,6 +106,8 @@ pub fn classify(error: &str) -> Verdict {
     if NEVER_ROTATE.iter().any(|needle| text.contains(needle)) {
         return Verdict::Ignore;
     }
+    // Nothing to classify against an account: every free-tier refusal here is metered
+    // per IP, so all of them rotate.
     if EGREGIOUS_EGRESS.iter().any(|needle| text.contains(needle)) {
         return Verdict::Rotate;
     }
@@ -171,7 +175,21 @@ mod tests {
 
     #[test]
     fn free_usage_limit_rotates() {
+        // Metered per IP: the same account answers 429 from a flagged exit and 200
+        // from a clean one, so this must rotate.
         assert_eq!(classify(FREE_USAGE_LIMIT), Verdict::Rotate);
+    }
+
+    #[test]
+    fn go_usage_limit_rotates() {
+        let go = r#"API error: 429 Too Many Requests: {"type":"error","error":{"type":"GoUsageLimitError","message":"Go usage limit reached"}}"#;
+        assert_eq!(classify(go), Verdict::Rotate);
+    }
+
+    #[test]
+    fn plain_rate_limit_still_rotates() {
+        let transient = "API error: 429 Too Many Requests: rate_limit_exceeded";
+        assert_eq!(classify(transient), Verdict::Rotate);
     }
 
     #[test]

@@ -1870,6 +1870,14 @@ async fn run_prompt_turn(
             Err(error) => {
                 let text = error.to_string();
                 let verdict = opencode_proxy::retry::classify(&text);
+                if verdict.is_quota() {
+                    tracing::error!(
+                        session_id = %session_id,
+                        error = %text,
+                        "provider account quota exhausted — no rotation can clear it, ending the turn"
+                    );
+                    break Err(error);
+                }
                 let allowed = verdict.rotates()
                     && rotations < opencode_proxy::retry::MAX_ROTATIONS_PER_TURN
                     && opencode_proxy::retry::budget_take(&session_id);
@@ -1924,6 +1932,9 @@ async fn run_prompt_turn(
                 .insert("agent".to_string(), serde_json::json!(agent));
         }
         assistant.add_text(format!("Provider error: {}", error));
+        if opencode_proxy::retry::classify(&error.to_string()).is_quota() {
+            assistant.add_text(opencode_proxy::retry::QUOTA_GUIDANCE.to_string());
+        }
     }
     {
         let mut sessions = state.sessions.lock().await;
