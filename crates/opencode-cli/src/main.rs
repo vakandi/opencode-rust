@@ -1632,12 +1632,6 @@ async fn run_chat_session(
     let current_dir = std::env::current_dir()?;
     let config = load_config(&current_dir)?;
 
-    // Must precede setup_providers(): a client built before the proxy port is registered
-    // snapshots an environment with no engine proxy, so every session egresses through
-    // whatever ambient proxy the shell exported instead of this machine's residential
-    // pool — which is the whole difference between the CLI and `serve`.
-    opencode_server::start_native_proxy().await;
-
     let provider_registry = Arc::new(setup_providers(&config).await?);
 
     if provider_registry.list().is_empty() {

@@ -17,7 +17,6 @@ opencode-tool = { path = "../opencode-tool" }
 opencode-mcp = { path = "../opencode-mcp" }
 opencode-plugin = { path = "../opencode-plugin" }
 opencode-paths = { path = "../opencode-paths" }
-opencode-proxy = { path = "../opencode-proxy" }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

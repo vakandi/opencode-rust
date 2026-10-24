@@ -2352,24 +2352,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "opencode-proxy"
-version = "0.1.0"
-dependencies = [
- "base64",
- "bytes",
- "chrono",
- "httparse",
- "libc",
- "opencode-paths",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "opencode-server"
 version = "0.1.0"
 dependencies = [
@@ -2389,7 +2371,6 @@ dependencies = [
  "opencode-paths",
  "opencode-plugin",
  "opencode-provider",
- "opencode-proxy",
  "opencode-session",
  "opencode-storage",
  "opencode-tool",

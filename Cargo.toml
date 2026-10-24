@@ -21,7 +21,6 @@ members = [
     "crates/opencode-plugin",
     "crates/opencode-tui",
     "crates/opencode-paths",
-    "crates/opencode-proxy",
 ]
 
 [workspace.package]
