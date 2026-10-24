@@ -7,6 +7,22 @@ dependency on any other system and no reference to one.
 The CLI binary is named **`opencode`**, but the crate is `opencode-cli` — that mismatch
 breaks every command guess. The npm/brew entry point is **`opr`**.
 
+## This is the public mirror
+
+This repo is the public build. It is the same engine as `vakandi/opencode-rust-private`,
+with the builtin proxy system removed:
+
+- here — 20 crates, one shared HTTP client, no proxy crate, no `proxy` field in `/health`.
+- private — 21 crates, `crates/opencode-proxy` included: per-session egress, error-driven
+  rotation, tunnel severing.
+
+The removal is structural, not a feature flag: the crate is deleted and its wiring stripped.
+Do not reintroduce it behind `#[cfg(feature = "proxy")]`, do not vendor it, and do not make
+this tree depend on code that only exists in the private repo.
+
+`npm`, Homebrew and the `v*` release workflow publish from **this** repo. The private repo's
+publish workflow is disabled for that reason.
+
 ## Provenance and history
 
 `git log` was rewritten with `git-filter-repo` to purge three credentials that had been
@@ -104,8 +120,8 @@ Both are commented in-source with the reason; keep them:
 
 ## Paths
 
-`OPENCODE_PATHS_ROOT` is the single lever for the database, provider auth, MCP auth, well-known
-config, and the proxy pool files — resolve them through `opencode_paths::{db_file, data_file,
+`OPENCODE_PATHS_ROOT` is the single lever for the database, provider auth, MCP auth and
+well-known config — resolve them through `opencode_paths::{db_file, data_file,
 provider_auth_dir}`. A blank or whitespace-only value counts as unset (a stray
 `export OPENCODE_PATHS_ROOT=` must not relocate the db into cwd); a relative root anchors to cwd.
 
@@ -116,13 +132,6 @@ under `data_dir`) stays real.
 
 Config merges from `opencode.jsonc` · `opencode.json` · `.opencode/opencode.jsonc` ·
 `.opencode/opencode.json`, searched upward, then `~/.config/opencode/opencode.json[c]`.
-
-## Proxy ordering
-
-`opencode_proxy::start()` calls `env::export_proxy_env` and it **must** run before the provider
-registry is built: reqwest snapshots the proxy environment at `Client::new()`. Route proxy setup
-through `start()` rather than setting the env vars yourself. `start()` returns an error when the
-pool file is empty rather than binding a listener that answers 502 for everything.
 
 ## Tests
 

@@ -21,7 +21,7 @@ pub struct ChatRequest {
     pub provider_options: Option<HashMap<String, serde_json::Value>>,
     #[serde(skip)]
     pub variant: Option<String>,
-    /// Selects the residential proxy this turn egresses from.
+    /// Selects the session whose HTTP client this turn uses.
     #[serde(skip)]
     pub session_id: Option<String>,
 }

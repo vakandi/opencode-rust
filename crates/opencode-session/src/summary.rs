@@ -331,9 +331,9 @@ async fn generate_message_title_llm(
         // carries real tool schemas, so this rides the agent's own tool set.
         tools: Some(crate::prompt::default_tool_definitions().await),
         stream: Some(false),
-        // Carries the session identity: `for_session("")` hands back a direct client and
-        // mints an unrelated x-opencode-session, so this call neither rode the session's
-        // residential proxy nor belonged to the turn it was titling.
+        // Carries the session identity: `for_session("")` hands back the shared client and
+        // mints an unrelated x-opencode-session, so this call would neither share the
+        // session's client nor belong to the turn it was titling.
         session_id: Some(session_id.to_string()),
         provider_options: None,
         variant: None,
