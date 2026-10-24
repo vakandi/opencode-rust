@@ -125,6 +125,15 @@ impl App {
         self.context.navigate(route);
     }
 
+    /// Same path the mouse wheel takes. Exposed so a headless test can assert the
+    /// transcript actually moves instead of inferring it from a screenshot.
+    #[doc(hidden)]
+    pub fn scroll_session_up_mouse(&mut self) {
+        if let Some(ref mut sv) = self.session_view {
+            sv.scroll_up_mouse();
+        }
+    }
+
     fn build(tui: Option<terminal::Tui>, runtime: Runtime) -> anyhow::Result<Self> {
         let (event_tx, event_rx) = mpsc::channel();
         let event_tx_input = event_tx.clone();
@@ -796,6 +805,14 @@ impl App {
                         .is_some_and(|pending| pending != session_id)
                     {
                         self.pending_session_sync = None;
+                    }
+
+                    let running = matches!(
+                        self.context.session.read().status(&session_id),
+                        SessionStatus::Running | SessionStatus::Retrying { .. }
+                    );
+                    if running {
+                        self.pending_session_sync = Some(session_id.to_string());
                     }
 
                     if should_sync_session(
@@ -3223,7 +3240,7 @@ impl App {
 
         let mut session_ctx = self.context.session.write();
         session_ctx.upsert_session(map_api_session(&session));
-        session_ctx.set_messages(
+        session_ctx.merge_messages(
             session_id,
             messages
                 .iter()
@@ -3987,12 +4004,15 @@ fn spawn_server_event_listener(
         };
 
         let event_url = format!("{}/event", base_url.trim_end_matches('/'));
+        let auth = crate::api::auth_header();
         loop {
-            match client
+            let mut request = client
                 .get(&event_url)
-                .header(reqwest::header::ACCEPT, "text/event-stream")
-                .send()
-            {
+                .header(reqwest::header::ACCEPT, "text/event-stream");
+            if let Some((name, value)) = auth.clone() {
+                request = request.header(name, value);
+            }
+            match request.send() {
                 Ok(response) if response.status().is_success() => {
                     consume_server_event_stream(response, &event_tx, &context);
                 }

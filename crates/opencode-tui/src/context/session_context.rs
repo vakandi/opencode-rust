@@ -41,6 +41,8 @@ pub enum MessageRole {
     System,
 }
 
+pub const OPTIMISTIC_USER_ID_PREFIX: &str = "local_user_";
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TokenUsage {
     pub input: u64,
@@ -182,6 +184,33 @@ impl SessionContext {
             .entry(id.clone())
             .or_insert(SessionStatus::Idle);
         self.current_session_id = Some(id);
+    }
+
+    pub fn merge_messages(&mut self, session_id: &str, server: Vec<Message>) {
+        let user_content = |msg: &Message| {
+            matches!(msg.role, MessageRole::User).then(|| msg.content.trim().to_string())
+        };
+        let pending: Vec<Message> = self
+            .messages
+            .get(session_id)
+            .map(|local| {
+                local
+                    .iter()
+                    .filter(|msg| {
+                        msg.id.starts_with(OPTIMISTIC_USER_ID_PREFIX)
+                            && user_content(msg).is_some_and(|c| !c.is_empty())
+                            && !server.iter().any(|s| {
+                                s.id == msg.id || (user_content(s) == user_content(msg))
+                            })
+                    })
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let mut merged = server;
+        merged.extend(pending);
+        self.messages.insert(session_id.to_string(), merged);
     }
 
     pub fn set_messages(&mut self, session_id: &str, messages: Vec<Message>) {

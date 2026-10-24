@@ -16,6 +16,7 @@ pub mod listener;
 pub mod pool;
 pub mod probe;
 pub mod quarantine;
+pub mod retry;
 pub mod rotate;
 pub mod selection;
 pub mod session;

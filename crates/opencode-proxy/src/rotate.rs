@@ -1,5 +1,10 @@
-//! Per-session rotation. Every `rotate_interval` each live session re-selects the
-//! oldest pool entry nobody else holds, probe-gated, and adopts it.
+//! Per-session rotation, driven by the provider's answer rather than by a clock.
+//!
+//! `retry::classify` reads the error the turn actually received; when it says the
+//! egress is the problem, `rotate_session` adopts the oldest pool entry nobody else
+//! holds, probe-gated, and the turn resumes. There is no periodic tick: a timer fires
+//! blind (burning a healthy egress mid-turn) and is silent exactly when a 403/429 lands
+//! two seconds after the last one.
 //!
 //! Invariants, each one a bug that shipped in the reference plugin:
 //!
@@ -274,22 +279,17 @@ pub async fn ensure_session(state: &Arc<ProxyState>, session_id: &str) -> bool {
     rotate_session(state, session_id).await
 }
 
-/// Spawn the periodic loop. Each tick rotates every live session.
+/// Select the initial egress and stop.
+///
+/// There is deliberately **no periodic tick**. A timer is blind to what the request
+/// actually got: it rotates a healthy egress mid-turn and, worse, does nothing when a
+/// 403/429 lands two seconds after the last tick. Rotation is now driven by the error
+/// itself (`retry::classify` decides), so the only thing left at boot is picking the
+/// first upstream.
 pub fn spawn(state: Arc<ProxyState>) {
-    let cfg = Arc::clone(&state.cfg);
     tokio::spawn(async move {
         if rotate_once(&state).await {
             tracing::info!("initial proxy egress selected");
-        }
-        // `interval()` fires its FIRST tick immediately, which combined with the
-        // adoption above rotated twice within seconds of boot and discarded a working
-        // egress. Start the schedule one full interval out instead.
-        let start = tokio::time::Instant::now() + cfg.rotate_interval;
-        let mut ticker = tokio::time::interval_at(start, cfg.rotate_interval);
-        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            ticker.tick().await;
-            rotate_all(&state).await;
         }
     });
 }

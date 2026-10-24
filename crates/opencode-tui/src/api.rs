@@ -332,12 +332,46 @@ pub struct ApiClient {
     pub current_session: Arc<RwLock<Option<SessionInfo>>>,
 }
 
+/// Shared bearer token for a token-protected server.
+///
+/// The subworker server sets `ELIA_AUTH_TOKEN` (`require_admin_token` in
+/// `opencode-server/src/routes.rs`) and answers **401** to every non-`/health`
+/// request that does not carry it. A client that omits it sees a server that
+/// looks healthy on `/health` and is completely unreachable everywhere else.
+pub fn auth_token() -> Option<String> {
+    let raw = std::env::var("ELIA_AUTH_TOKEN").ok()?;
+    let trimmed = raw.trim().to_string();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
+/// `Authorization: Bearer <token>` header for the shared token, if one is set.
+pub fn auth_header() -> Option<(
+    reqwest::header::HeaderName,
+    reqwest::header::HeaderValue,
+)> {
+    let token = auth_token()?;
+    let value = format!("Bearer {token}");
+    Some((
+        reqwest::header::AUTHORIZATION,
+        reqwest::header::HeaderValue::from_str(&value).ok()?,
+    ))
+}
+
 impl ApiClient {
     pub fn new(base_url: String) -> Self {
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .expect("Failed to create HTTP client");
+        let mut builder = Client::builder().timeout(std::time::Duration::from_secs(30));
+        if let Some((name, value)) = auth_header() {
+            builder = builder.default_headers({
+                let mut headers = reqwest::header::HeaderMap::new();
+                headers.insert(name, value);
+                headers
+            });
+        }
+        let client = builder.build().expect("Failed to create HTTP client");
 
         Self {
             client,

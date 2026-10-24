@@ -1684,6 +1684,33 @@ pub struct SessionPromptRequest {
     pub system: Option<String>,
 }
 
+/// Rotate this session onto a fresh pool entry.
+///
+/// Returns `false` when no proxy is running (disabled or direct mode), because in that
+/// case there is nothing to rotate and the caller must surface the provider error
+/// instead of looping on the same egress.
+async fn rotate_egress_for_session(session_id: &str) -> bool {
+    let Some(state) = crate::server::proxy_state() else {
+        return false;
+    };
+    opencode_proxy::rotate::rotate_session(&state, session_id).await
+}
+
+/// Build the turn that follows a rotation: same model, variant and agent, but the user
+/// part is the resume nudge instead of the original task. Re-sending the task would
+/// restart work the model had already done.
+fn resume_input(
+    base: &opencode_session::PromptInput,
+    nudge: &str,
+) -> opencode_session::PromptInput {
+    let mut next = base.clone();
+    next.message_id = None;
+    next.parts = vec![opencode_session::PartInput::Text {
+        text: nudge.to_string(),
+    }];
+    next
+}
+
 /// Run one full assistant turn for a session: stream it, persist it, then go idle.
 ///
 /// Shared by the blocking `/prompt` route and by `/prompt_async`, because both must
@@ -1820,18 +1847,56 @@ async fn run_prompt_turn(
     };
 
     tracing::info!(target: "turn", "4 calling provider model={}/{}", provider_id, model_id);
-    if let Err(error) = prompt_runner
-        .prompt_with_update_hook(
-            input,
-            &mut session,
-            provider,
-            system_prompt,
-            tools,
-            opencode_session::AgentParams::default(),
-            Some(update_hook),
-        )
-        .await
-    {
+    // A provider refusal is answered by rotating the egress and resuming, not by
+    // ending the turn: the model never saw the failure, so the session is intact and
+    // the only thing that changed is the IP the next request leaves from.
+    let agent_params = opencode_session::AgentParams::default();
+    let mut prompt_input = input;
+    let mut rotations: u32 = 0;
+    let outcome = loop {
+        match prompt_runner
+            .prompt_with_update_hook(
+                prompt_input.clone(),
+                &mut session,
+                Arc::clone(&provider),
+                system_prompt.clone(),
+                tools.clone(),
+                agent_params.clone(),
+                Some(Arc::clone(&update_hook)),
+            )
+            .await
+        {
+            Ok(()) => break Ok(()),
+            Err(error) => {
+                let text = error.to_string();
+                let verdict = opencode_proxy::retry::classify(&text);
+                let allowed = verdict.rotates()
+                    && rotations < opencode_proxy::retry::MAX_ROTATIONS_PER_TURN
+                    && opencode_proxy::retry::budget_take(&session_id);
+                if !allowed {
+                    break Err(error);
+                }
+                rotations += 1;
+                if !rotate_egress_for_session(&session_id).await {
+                    opencode_proxy::retry::budget_refund(&session_id);
+                    tracing::warn!(
+                        session_id = %session_id,
+                        error = %text,
+                        "provider error is egress-related but no egress could be changed; surfacing it"
+                    );
+                    break Err(error);
+                }
+                tracing::warn!(
+                    session_id = %session_id,
+                    attempt = rotations,
+                    error = %text,
+                    "provider error is egress-related; rotated and resuming the session"
+                );
+                prompt_input = resume_input(&prompt_input, opencode_proxy::retry::RESUME_NUDGE);
+            }
+        }
+    };
+    if let Err(error) = outcome {
         tracing::error!(
             session_id = %session_id,
             provider_id = %provider_id,

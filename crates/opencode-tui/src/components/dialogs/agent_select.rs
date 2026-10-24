@@ -107,13 +107,23 @@ impl AgentSelectDialog {
         self.state.selected().and_then(|i| self.agents.get(i))
     }
 
+    /// Grow to fit the roster. The old fixed `12` cap showed ~8 of the configured
+    /// agents, so the rest were only reachable through a window that never moved.
+    fn dialog_height(&self, area: Rect) -> u16 {
+        let ceiling = area.height.saturating_sub(4).max(6);
+        u16::try_from(self.agents.len())
+            .unwrap_or(u16::MAX)
+            .saturating_add(2)
+            .min(ceiling)
+    }
+
     pub fn render(&self, frame: &mut Frame, area: Rect, theme: &Theme) {
         if !self.open {
             return;
         }
 
         let dialog_width = 45;
-        let dialog_height = (self.agents.len() + 2).min(12) as u16;
+        let dialog_height = self.dialog_height(area);
         let dialog_area = centered_rect(dialog_width, dialog_height, area);
 
         frame.render_widget(Clear, dialog_area);
