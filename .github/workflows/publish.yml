@@ -52,7 +52,16 @@ jobs:
           mkdir -p dist
           cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "dist/${{ matrix.asset }}"
           test -s "dist/${{ matrix.asset }}" || { echo "::error::binary missing for ${{ matrix.target }}"; exit 1; }
-          cd dist && sha256sum "${{ matrix.asset }}" > "${{ matrix.asset }}.sha256"
+          # Not `sha256sum`: it is GNU coreutils, absent on the macOS runners, and since
+          # `attach` needs every asset those two jobs killed every release since v0.1.2.
+          # `openssl dgst` is not a substitute — it prints the filename before the hash,
+          # and install.js takes the first field. `shasum` matches sha256sum's layout.
+          cd dist
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "${{ matrix.asset }}" > "${{ matrix.asset }}.sha256"
+          else
+            shasum -a 256 "${{ matrix.asset }}" > "${{ matrix.asset }}.sha256"
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
