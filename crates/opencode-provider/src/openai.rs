@@ -416,9 +416,15 @@ impl OpenAIProvider {
         if let Some(choices) = chunk.get("choices").and_then(Value::as_array) {
             for choice in choices {
                 if let Some(delta) = choice.get("delta") {
+                    // Ollama's OpenAI-compatible endpoint streams thinking tokens under
+                    // `delta.reasoning` (not `reasoning_content`/`reasoning_text`). Without
+                    // this arm a local thinking model emits minutes of invisible output and
+                    // the turn looks dead. Keep the other two names: they are what ZhipuAI
+                    // and OpenAI-compatible gateways already send.
                     let reasoning = delta
                         .get("reasoning_content")
                         .or_else(|| delta.get("reasoning_text"))
+                        .or_else(|| delta.get("reasoning"))
                         .and_then(Value::as_str)
                         .unwrap_or_default();
 
@@ -812,6 +818,33 @@ impl OpenAIProvider {
         Ok(value)
     }
 
+    /// Ollama's OpenAI-compatible endpoint accepts `reasoning_effort` and honours
+    /// `"none"` by answering directly. Its default is to think first, and a local
+    /// thinking model with an 8192-token output cap can spend the entire budget on
+    /// hidden reasoning and return an empty `content` — which the session records as
+    /// a completed but empty turn. Disable reasoning for local Ollama unless the
+    /// caller explicitly asked for another effort level.
+    fn apply_local_provider_defaults(&self, body: &mut Value) {
+        if !self.is_local_ollama() {
+            return;
+        }
+        if let Value::Object(obj) = body {
+            obj.entry("reasoning_effort".to_string())
+                .or_insert_with(|| Value::String("none".to_string()));
+        }
+    }
+
+    fn is_local_ollama(&self) -> bool {
+        self.config
+            .base_url
+            .as_deref()
+            .map(|url| {
+                let url = url.to_ascii_lowercase();
+                url.contains("11434") || url.contains("ollama")
+            })
+            .unwrap_or(false)
+    }
+
     fn responses_url(base_url: Option<&str>, path: &str) -> String {
         let path = path.trim_start_matches('/');
         match base_url {
@@ -1051,6 +1084,7 @@ impl OpenAIProvider {
             crate::session_client::for_session(request.session_id.as_deref().unwrap_or(""));
         let url = Self::chat_completions_url(self.config.base_url.as_deref());
         let mut request_body = Self::build_request_body(&request)?;
+        self.apply_local_provider_defaults(&mut request_body);
 
         // Ensure stream is disabled for non-streaming path. The caller may have
         // set stream=true on the ChatRequest (e.g. prompt loop), but chat_legacy
@@ -1229,6 +1263,7 @@ impl OpenAIProvider {
         let url = Self::chat_completions_url(self.config.base_url.as_deref());
         request.stream = Some(true);
         let mut request_body = Self::build_request_body(&request)?;
+        self.apply_local_provider_defaults(&mut request_body);
         // Zen reads the session/request pair off the request itself. A pinned pair from
         // the environment goes stale and every turn 403s, so derive it per call.
         let zen_identity = if self.config.requires_agent_shape {
@@ -1510,6 +1545,60 @@ mod tests {
             variant: None,
             session_id: None,
         }
+    }
+
+    #[test]
+    fn ollama_reasoning_deltas_are_surfaced_instead_of_dropped() {
+        let mut state = LegacySseParserState::default();
+        let events = OpenAIProvider::parse_legacy_sse_data(
+            r#"{"choices":[{"delta":{"reasoning":"Thinking"}}]}"#,
+            &mut state,
+        );
+        assert!(
+            events.iter().any(|event| matches!(
+                event,
+                StreamEvent::ReasoningDelta { text, .. } if text == "Thinking"
+            )),
+            "Ollama emits thinking under delta.reasoning; dropping it makes the turn look dead"
+        );
+    }
+
+    #[test]
+    fn local_ollama_disables_thinking_by_default() {
+        let provider =
+            OpenAIProvider::openai_compatible("http://127.0.0.1:11434/v1", "ollama");
+        let mut body = serde_json::json!({});
+        provider.apply_local_provider_defaults(&mut body);
+        assert_eq!(
+            body.get("reasoning_effort"),
+            Some(&serde_json::json!("none")),
+            "a local thinking model must answer instead of spending max_tokens on hidden reasoning"
+        );
+    }
+
+    #[test]
+    fn local_ollama_keeps_an_explicit_effort() {
+        let provider =
+            OpenAIProvider::openai_compatible("http://127.0.0.1:11434/v1", "ollama");
+        let mut body = serde_json::json!({"reasoning_effort": "low"});
+        provider.apply_local_provider_defaults(&mut body);
+        assert_eq!(
+            body.get("reasoning_effort"),
+            Some(&serde_json::json!("low")),
+            "the caller's explicit choice wins over the local default"
+        );
+    }
+
+    #[test]
+    fn remote_openai_compatible_keeps_its_reasoning_default() {
+        let provider =
+            OpenAIProvider::openai_compatible("https://api.example.com/v1", "key");
+        let mut body = serde_json::json!({});
+        provider.apply_local_provider_defaults(&mut body);
+        assert!(
+            body.get("reasoning_effort").is_none(),
+            "this default is Ollama-specific and must not leak to every compatible provider"
+        );
     }
 
     /// The engine must not invent tools to satisfy Zen: none, an empty array and a
